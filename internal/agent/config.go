@@ -213,6 +213,16 @@ func SaveLocations(l Locations) (string, error) {
 	return path, writeJSON(path, l)
 }
 
+// SaveAllowlist writes agent-allowlist.json.
+func SaveAllowlist(a Allowlist) (string, error) {
+	dir, err := configDir()
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, allowlistFile)
+	return path, writeJSON(path, a)
+}
+
 // SortedLocationNames returns location names in stable alphabetical order so the
 // numbered menu is consistent between calls.
 func (l Locations) SortedNames() []string {

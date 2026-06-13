@@ -113,6 +113,7 @@ Authenticate once with your phone number. The session is persisted locally — y
 | `tg tail <@username\|chat_id>` | Follow a chat live; type to send, paste a path to send a file |
 | `tg chats` | List recent chats |
 | `tg init agent` | Run the agent bridge (drive Claude/Codex from Telegram) — see [Agent bridge](#agent-bridge--drive-claudecodex-from-telegram) |
+| `tg allowlist [add\|remove …]` | List/add/remove who may drive the agent bridge |
 | `tg agents [set <task> <agent>]` | Show/set which agent (claude/codex) handles which task |
 | `tg locations [add\|remove …]` | List/add/remove agent-bridge project locations |
 | `tg triage [30m\|1h\|…\|twice-daily\|on\|off]` | Show/set the incoming-message triage schedule |
@@ -256,7 +257,9 @@ If neither is installed, the bridge and triage are unavailable (auto-reply still
 
 Four JSON files in the config dir (`~/.config/tg/`), all `0600`, auto-created on first run:
 
-**`agent-allowlist.json`** — who may drive it, their role, and (optionally) their agent:
+**`agent-allowlist.json`** — who may drive it, their role, and (optionally) their agent
+(also via `tg allowlist add <@user> <role> [locations...] [--agent claude|codex]` /
+`tg allowlist remove <@user>`):
 ```json
 {
   "@you":      { "role": "full", "locations": ["*"], "agent": "claude" },
