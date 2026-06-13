@@ -65,6 +65,7 @@ func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow 
 		lastAutoReply: map[int64]time.Time{},
 		nameCache:     map[int64]string{},
 	}
+	d.inbox = loadInbox() // restore any stranger messages buffered before a restart
 
 	if err := d.serveIPC(); err != nil {
 		fmt.Printf("  ! IPC socket unavailable (tg send/ask won't route through daemon): %v\n", err)

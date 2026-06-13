@@ -1,7 +1,10 @@
 package agent
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -10,8 +13,49 @@ import (
 
 // inboxMessage is one message from a non-allow-listed sender awaiting triage.
 type inboxMessage struct {
-	sender string
-	text   string
+	Sender string `json:"sender"`
+	Text   string `json:"text"`
+	At     int64  `json:"at"`
+}
+
+func inboxPath() (string, error) {
+	dir, err := configDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "triage-inbox.json"), nil
+}
+
+// saveInbox persists the pending stranger messages so a restart/crash doesn't
+// lose them before the next triage pass. An empty inbox removes the file.
+func saveInbox(msgs []inboxMessage) {
+	path, err := inboxPath()
+	if err != nil {
+		return
+	}
+	if len(msgs) == 0 {
+		_ = os.Remove(path)
+		return
+	}
+	if data, err := json.Marshal(msgs); err == nil {
+		_ = os.WriteFile(path, data, 0o600)
+	}
+}
+
+func loadInbox() []inboxMessage {
+	path, err := inboxPath()
+	if err != nil {
+		return nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var msgs []inboxMessage
+	if json.Unmarshal(data, &msgs) != nil {
+		return nil
+	}
+	return msgs
 }
 
 // handleNonAllowlisted auto-replies (at most hourly per sender) and buffers a
@@ -26,7 +70,8 @@ func (d *daemon) handleNonAllowlisted(msg tdlib.Message) {
 	sender := d.senderName(msg.SenderID.UserID)
 
 	d.mu.Lock()
-	d.inbox = append(d.inbox, inboxMessage{sender: sender, text: text})
+	d.inbox = append(d.inbox, inboxMessage{Sender: sender, Text: text, At: time.Now().Unix()})
+	snapshot := append([]inboxMessage(nil), d.inbox...)
 	last := d.lastAutoReply[msg.SenderID.UserID]
 	shouldReply := d.settings.AutoReplyEnabled && d.settings.AutoReply != "" && time.Since(last) > time.Hour
 	if shouldReply {
@@ -34,6 +79,7 @@ func (d *daemon) handleNonAllowlisted(msg tdlib.Message) {
 	}
 	d.mu.Unlock()
 
+	saveInbox(snapshot)
 	if shouldReply {
 		d.send(msg.ChatID, d.settings.AutoReply)
 	}
@@ -64,10 +110,19 @@ func (d *daemon) runTriageLoop() {
 	if interval <= 0 {
 		interval = time.Hour
 	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
 	fmt.Printf("[triage] enabled: every %s, agent=%s, dir=%s\n", interval, d.triageBackend, d.settings.Triage.Dir)
 
+	// An initial pass a few minutes after start, so frequent restarts can't
+	// starve triage for a full interval and any persisted backlog is handled.
+	initialDelay := 3 * time.Minute
+	if interval < initialDelay {
+		initialDelay = interval
+	}
+	time.Sleep(initialDelay)
+	d.runTriageOnce()
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
 	for range ticker.C {
 		d.runTriageOnce()
 	}
@@ -81,6 +136,7 @@ func (d *daemon) runTriageOnce() {
 	if len(msgs) == 0 {
 		return
 	}
+	saveInbox(nil) // consumed -> clear the persisted backlog
 
 	var b strings.Builder
 	b.WriteString("You are triaging Telegram messages received for the owner while they were away.\n")
@@ -90,7 +146,7 @@ func (d *daemon) runTriageOnce() {
 	b.WriteString("Otherwise reply with a short bullet list, one per important message: '• <sender>: <one-line why it matters>'.\n")
 	b.WriteString("Do not take any actions or run any commands.\n\nMessages:\n")
 	for i, m := range msgs {
-		fmt.Fprintf(&b, "%d. From %s: %s\n", i+1, m.sender, snippet(m.text, 300))
+		fmt.Fprintf(&b, "%d. From %s: %s\n", i+1, m.Sender, snippet(m.Text, 300))
 	}
 
 	if d.triageBackend == "" {
