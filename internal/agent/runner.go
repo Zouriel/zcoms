@@ -104,6 +104,7 @@ func RunClaude(dir, prompt, resumeID string, role Role) (RunResult, error) {
 
 	cmd := exec.CommandContext(ctx, claudeBin, args...)
 	cmd.Dir = dir
+	cmd.Stdin = nil // don't let claude wait on stdin
 
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout

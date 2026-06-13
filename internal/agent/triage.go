@@ -12,6 +12,15 @@ import (
 type triageMessage struct {
 	Sender string
 	Text   string
+	When   time.Time
+}
+
+// triageTimeLabel renders when a message arrived, e.g. "2h ago (Sat 14:32)".
+func triageTimeLabel(t time.Time) string {
+	if t.IsZero() {
+		return "unknown time"
+	}
+	return fmt.Sprintf("%s (%s)", humanAgo(t), t.Format("Mon 15:04"))
 }
 
 // handleNonAllowlisted auto-replies (at most hourly per sender) to a stranger.
@@ -97,7 +106,7 @@ func (d *daemon) collectUnread() ([]triageMessage, map[int64][]int64) {
 
 		name := d.senderName(info.UserID)
 		for _, m := range unread {
-			msgs = append(msgs, triageMessage{Sender: name, Text: replyText(m.Content)})
+			msgs = append(msgs, triageMessage{Sender: name, Text: replyText(m.Content), When: time.Unix(m.Date, 0)})
 			toRead[cid] = append(toRead[cid], m.ID)
 		}
 	}
@@ -166,10 +175,10 @@ func (d *daemon) runTriageOnce(dir string) {
 	b.WriteString("Decide which are IMPORTANT enough to notify them now (urgent, personal, time-sensitive, ")
 	b.WriteString("or someone clearly needing a reply). Ignore spam, promotions, automated/bot noise, and trivial chatter.\n")
 	b.WriteString("If NONE are important, reply with exactly: NONE\n")
-	b.WriteString("Otherwise reply with a short bullet list, one per important message: '• <sender>: <one-line why it matters>'.\n")
+	b.WriteString("Otherwise reply with a short bullet list, one per important message, and START each bullet with when it arrived: '• <when> — <sender>: <one-line why it matters>'.\n")
 	b.WriteString("Do not take any actions or run any commands.\n\nMessages:\n")
 	for i, m := range msgs {
-		fmt.Fprintf(&b, "%d. From %s: %s\n", i+1, m.Sender, snippet(m.Text, 300))
+		fmt.Fprintf(&b, "%d. [received %s] From %s: %s\n", i+1, triageTimeLabel(m.When), m.Sender, snippet(m.Text, 300))
 	}
 
 	res, err := RunAgent(d.triageBackend, dir, b.String(), "", RoleRead)
