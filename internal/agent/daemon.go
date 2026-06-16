@@ -170,9 +170,9 @@ func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow 
 	if settings.Triage.Enabled && d.mainChatID == 0 {
 		fmt.Println("  ! triage enabled but main_user not resolved — digests have nowhere to go")
 	}
-	if d.triageInstalled {
-		go d.runTriageLoop() // honors the enabled flag (re-read each cycle)
-	}
+	// Scheduled triage now runs in the external `zcoms-triage` component (it reads
+	// unread via the daemon's IPC `unread` op and replies via `send`). The daemon
+	// only serves those ops + `interact triage`; it no longer runs the loop.
 	if d.errandsInstalled {
 		go d.runErrandLoop() // advances WhatsApp errands (no push) and resumes errands after a restart
 	}
@@ -602,11 +602,15 @@ func (d *daemon) runAgent(st *userState, prompt string, role Role, awaitConfirmA
 			}
 		}()
 
-		// The triage brain is a single shared session — serialize so a
-		// scheduled pass and this interactive turn never drive it at once.
+		// The triage brain is a single shared session — serialize so a scheduled
+		// pass and this interactive turn never drive it at once. triageMu guards
+		// in-process; the flock also guards the external triage component.
 		if triageSession {
 			d.triageMu.Lock()
 			defer d.triageMu.Unlock()
+			if unlock := lockTriageBrain(); unlock != nil {
+				defer unlock()
+			}
 		}
 		// recordSession persists the (possibly new) session id after each turn so
 		// resumes — and the read-loop below — keep continuing the same conversation.

@@ -1,11 +1,16 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"time"
 
 	"zcoms/internal/agent"
 	"zcoms/internal/components"
@@ -33,7 +38,8 @@ func init() {
 			if len(args) == 0 {
 				return printComponentStatus()
 			}
-			return runInstall(strings.ToLower(strings.TrimSpace(args[0])))
+			force, _ := cmd.Flags().GetBool("force")
+			return runInstall(strings.ToLower(strings.TrimSpace(args[0])), force)
 		},
 	}
 
@@ -46,6 +52,8 @@ func init() {
 			return runUninstall(strings.ToLower(strings.TrimSpace(args[0])))
 		},
 	}
+
+	installCommand.Flags().Bool("force", false, "Re-seed, re-download, and re-activate even if already installed")
 
 	rootCmd.AddCommand(installCommand, uninstallCommand)
 }
@@ -78,7 +86,9 @@ func printComponentStatus() error {
 }
 
 // runInstall installs a component and its dependency closure, then activates it.
-func runInstall(name string) error {
+// With force, an already-installed component is re-seeded, re-downloaded, and
+// re-activated (used to migrate a pre-component install onto the real binary).
+func runInstall(name string, force bool) error {
 	meta, ok := components.Lookup(name)
 	if !ok {
 		return fmt.Errorf("unknown component %q — choose one of: %s", name, componentNames())
@@ -92,7 +102,8 @@ func runInstall(name string) error {
 	// Install dependencies first, then the component itself.
 	var newlyInstalled []components.Name
 	for _, dep := range append(components.Requires(meta.Name), meta.Name) {
-		if state.IsInstalled(dep) {
+		isTarget := dep == meta.Name
+		if state.IsInstalled(dep) && !(force && isTarget) {
 			continue
 		}
 		if err := seedComponent(dep); err != nil {
@@ -103,7 +114,7 @@ func runInstall(name string) error {
 	}
 
 	if len(newlyInstalled) == 0 {
-		fmt.Printf("%s is already installed.\n", meta.Name)
+		fmt.Printf("%s is already installed (use --force to re-activate).\n", meta.Name)
 		return nil
 	}
 
@@ -111,20 +122,48 @@ func runInstall(name string) error {
 		return err
 	}
 
+	// Activate each new component (deps first): bridge sets up the core daemon;
+	// triage/errands fetch their prebuilt binary and run it as their own service.
 	for _, c := range newlyInstalled {
 		fmt.Printf("✅ installed %s\n", c)
+		if err := activateComponent(c); err != nil {
+			fmt.Printf("⚠️  %s: %v\n", c, err)
+		}
 	}
-
-	// Activate: ensure the daemon service exists/enabled, then restart so the
-	// daemon picks up the new component(s).
-	if err := ensureDaemonService(); err != nil {
-		fmt.Printf("⚠️  could not set up the daemon service automatically: %v\n", err)
-		fmt.Println("   Install it manually, then: systemctl --user enable --now " + daemonUnit)
-	}
-	restartDaemon()
 
 	printPostInstallHints(newlyInstalled)
 	return nil
+}
+
+// component → its GitHub repo + binary name, for the prebuilt-release download.
+var componentArtifact = map[components.Name]struct{ repo, bin string }{
+	components.Triage:  {"Zouriel/zcoms-triage", "zcoms-triage"},
+	components.Errands: {"Zouriel/zcoms-errands", "zcoms-errands"},
+}
+
+// activateComponent makes a freshly-installed component live.
+func activateComponent(c components.Name) error {
+	switch c {
+	case components.Bridge:
+		if err := ensureDaemonService(); err != nil {
+			fmt.Printf("⚠️  could not set up the daemon service automatically: %v\n", err)
+			fmt.Println("   Install it manually, then: systemctl --user enable --now " + daemonUnit)
+			return nil
+		}
+		restartDaemon()
+		return nil
+	default:
+		art, ok := componentArtifact[c]
+		if !ok {
+			return nil
+		}
+		fmt.Printf("   ↓ downloading %s…\n", art.bin)
+		if err := fetchComponentBinary(art.repo, art.bin); err != nil {
+			return fmt.Errorf("download failed: %w (build from source: github.com/%s)", err, art.repo)
+		}
+		unit := string(c) // zcoms-<c>.service via componentUnitName
+		return ensureComponentService(componentUnitName(c), fmt.Sprintf("zcoms %s component", unit), art.bin)
+	}
 }
 
 // runUninstall removes a component and any components that depend on it.
@@ -144,9 +183,6 @@ func runUninstall(name string) error {
 			continue
 		}
 		state.Installed[dep] = false
-		if dep == components.Triage {
-			disableTriage()
-		}
 		removed = append(removed, dep)
 	}
 	if len(removed) == 0 {
@@ -158,11 +194,26 @@ func runUninstall(name string) error {
 	}
 	for _, c := range removed {
 		fmt.Printf("🗑️  removed %s\n", c)
+		deactivateComponent(c)
 	}
-	// Re-read state in the running daemon (it stops the gated loops).
-	restartDaemon()
 	fmt.Println("Its commands are now hidden from `zc --help`; reinstall with `zc install " + name + "`.")
 	return nil
+}
+
+// deactivateComponent stops a removed component's process/feature.
+func deactivateComponent(c components.Name) {
+	switch c {
+	case components.Bridge:
+		// The session host goes away — stop the core daemon (and triage with it).
+		_ = runSystemctl("disable", "--now", daemonUnit)
+	case components.Triage:
+		disableTriage()
+		_ = runSystemctl("disable", "--now", componentUnitName(c))
+	case components.Errands:
+		// Errands still runs inside the core daemon today — restart it so it drops
+		// the errand loop now that the component is gone.
+		restartDaemon()
+	}
 }
 
 // seedComponent makes sure a component's config files exist (and flips on the
@@ -342,4 +393,137 @@ func runSystemctl(args ...string) error {
 	c := exec.Command("systemctl", append([]string{"--user"}, args...)...)
 	c.Stderr = os.Stderr
 	return c.Run()
+}
+
+// --- component binaries (prebuilt release download) -------------------------
+
+func componentUnitName(c components.Name) string { return "zcoms-" + string(c) + ".service" }
+
+// platformAsset is the release-asset suffix for the host, e.g. "linux-x64".
+func platformAsset() string {
+	arch := runtime.GOARCH
+	switch arch {
+	case "amd64":
+		arch = "x64"
+	case "arm64":
+		arch = "arm64"
+	}
+	return runtime.GOOS + "-" + arch
+}
+
+type ghRelease struct {
+	TagName string `json:"tag_name"`
+	Assets  []struct {
+		Name string `json:"name"`
+		URL  string `json:"browser_download_url"`
+	} `json:"assets"`
+}
+
+// fetchComponentBinary downloads the prebuilt component binary for this platform
+// from the repo's latest GitHub release into ~/.local/bin/<bin>.
+func fetchComponentBinary(repo, bin string) error {
+	// Generous timeout: it caps the whole exchange including the body download.
+	client := &http.Client{Timeout: 5 * time.Minute}
+	apiURL := "https://api.github.com/repos/" + repo + "/releases/latest"
+	req, _ := http.NewRequest("GET", apiURL, nil)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("github API %s: %s", apiURL, resp.Status)
+	}
+	var rel ghRelease
+	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+		return err
+	}
+	want := bin + "-" + platformAsset()
+	var dlURL string
+	for _, a := range rel.Assets {
+		if a.Name == want {
+			dlURL = a.URL
+			break
+		}
+	}
+	if dlURL == "" {
+		return fmt.Errorf("no prebuilt %q in %s release %s", want, repo, rel.TagName)
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	binDir := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		return err
+	}
+	dest := filepath.Join(binDir, bin)
+	tmp := dest + ".download"
+
+	dr, err := client.Get(dlURL)
+	if err != nil {
+		return err
+	}
+	defer dr.Body.Close()
+	if dr.StatusCode != 200 {
+		return fmt.Errorf("download %s: %s", dlURL, dr.Status)
+	}
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(f, dr.Body); err != nil {
+		f.Close()
+		_ = os.Remove(tmp)
+		return err
+	}
+	f.Close()
+	if err := os.Rename(tmp, dest); err != nil { // atomic replace (works even if running)
+		_ = os.Remove(tmp)
+		return err
+	}
+	fmt.Printf("   installed %s (%s)\n", dest, rel.TagName)
+	return nil
+}
+
+// ensureComponentService writes+enables a component's own user unit running its
+// downloaded binary.
+func ensureComponentService(unitName, desc, bin string) error {
+	dir, err := userUnitDir()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	exe := filepath.Join(home, ".local", "bin", bin)
+	unit := fmt.Sprintf(`[Unit]
+Description=%s
+After=network-online.target %s
+Wants=%s
+
+[Service]
+Type=simple
+ExecStart=%s
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+`, desc, daemonUnit, daemonUnit, exe)
+	if err := os.WriteFile(filepath.Join(dir, unitName), []byte(unit), 0o644); err != nil {
+		return err
+	}
+	_ = runSystemctl("daemon-reload")
+	if err := runSystemctl("enable", "--now", unitName); err != nil {
+		return fmt.Errorf("enable %s: %w", unitName, err)
+	}
+	fmt.Println("🔄 started", unitName)
+	return nil
 }

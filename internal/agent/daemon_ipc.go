@@ -167,6 +167,38 @@ func (d *daemon) handleIPC(conn net.Conn) {
 			d.removePending(userID, replyCh)
 		}
 
+	case "resolve":
+		chatID, _, err := d.resolveChat(req.To)
+		if err != nil {
+			writeIPC(conn, ipcResponse{Error: err.Error()})
+			return
+		}
+		writeIPC(conn, ipcResponse{OK: true, ChatID: chatID})
+
+	case "unread":
+		// Expose the same Telegram inbox the daemon would triage, so the
+		// external triage component can read it over IPC.
+		msgs, _ := d.collectUnreadTG()
+		items := make([]UnreadItem, 0, len(msgs))
+		for _, m := range msgs {
+			items = append(items, UnreadItem{
+				Sender: m.Sender, Text: m.Text, When: m.When.Unix(),
+				ChatID: m.TGChat, MsgID: m.TGMsg,
+			})
+		}
+		writeIPC(conn, ipcResponse{OK: true, Unread: items})
+
+	case "mark_read":
+		if req.ChatID == 0 || len(req.MessageIDs) == 0 {
+			writeIPC(conn, ipcResponse{Error: "mark_read needs chat_id and message_ids"})
+			return
+		}
+		if err := tdlib.MarkMessagesRead(d.tdjson, d.clientID, req.ChatID, req.MessageIDs); err != nil {
+			writeIPC(conn, ipcResponse{Error: err.Error()})
+			return
+		}
+		writeIPC(conn, ipcResponse{OK: true, ChatID: req.ChatID})
+
 	case "errand_start":
 		msg, err := d.startErrand(ErrandSpec{
 			Target: req.To, Brief: req.Brief, DeliverToTarget: req.Deliver, AutoStart: req.AutoStart,

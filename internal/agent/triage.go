@@ -85,6 +85,41 @@ func (d *daemon) senderName(userID int64) string {
 // neither the owner nor allow-listed, returning the messages plus the message
 // ids to mark read (per chat) once they've been triaged.
 func (d *daemon) collectUnread() ([]triageMessage, readPlan) {
+	msgs, plan := d.collectUnreadTG()
+
+	// Only reach for WhatsApp when explicitly enabled; on any error log and
+	// continue with Telegram only so triage never breaks because of the sidecar.
+	if d.settings.WhatsApp.Enabled {
+		wa, err := whatsapp.FetchUnread(d.settings.WhatsApp.Socket)
+		if err != nil {
+			fmt.Printf("[triage] whatsapp unavailable, skipping (tg only): %v\n", err)
+		} else {
+			for _, u := range wa {
+				if d.activeErrandForWA(u.ChatID) != nil {
+					continue // an errand owns this WhatsApp chat; don't also triage it
+				}
+				msgs = append(msgs, triageMessage{
+					Sender: u.Sender,
+					Text:   u.Text,
+					When:   u.When,
+					Source: "wa",
+					WAChat: u.ChatID,
+					WAMsg:  u.MsgID,
+					File:   u.File,
+				})
+				plan.WA[u.ChatID] = append(plan.WA[u.ChatID], u.MsgID)
+			}
+		}
+	}
+
+	return msgs, plan
+}
+
+// collectUnreadTG scans Telegram for unread 1:1 messages from people who are
+// neither the owner nor allow-listed (and aren't owned by an errand). It is the
+// data source for the daemon's "unread" IPC op, so the external triage component
+// can read the same inbox the daemon would.
+func (d *daemon) collectUnreadTG() ([]triageMessage, readPlan) {
 	plan := readPlan{TG: map[int64][]int64{}, WA: map[string][]string{}}
 
 	chatIDs, err := tdlib.FetchChatIdentifiers(d.tdjson, d.clientID, 80)
@@ -139,31 +174,6 @@ func (d *daemon) collectUnread() ([]triageMessage, readPlan) {
 				TGMsg:  m.ID,
 			})
 			plan.TG[cid] = append(plan.TG[cid], m.ID)
-		}
-	}
-
-	// Only reach for WhatsApp when explicitly enabled; on any error log and
-	// continue with Telegram only so triage never breaks because of the sidecar.
-	if d.settings.WhatsApp.Enabled {
-		wa, err := whatsapp.FetchUnread(d.settings.WhatsApp.Socket)
-		if err != nil {
-			fmt.Printf("[triage] whatsapp unavailable, skipping (tg only): %v\n", err)
-		} else {
-			for _, u := range wa {
-				if d.activeErrandForWA(u.ChatID) != nil {
-					continue // an errand owns this WhatsApp chat; don't also triage it
-				}
-				msgs = append(msgs, triageMessage{
-					Sender: u.Sender,
-					Text:   u.Text,
-					When:   u.When,
-					Source: "wa",
-					WAChat: u.ChatID,
-					WAMsg:  u.MsgID,
-					File:   u.File,
-				})
-				plan.WA[u.ChatID] = append(plan.WA[u.ChatID], u.MsgID)
-			}
 		}
 	}
 

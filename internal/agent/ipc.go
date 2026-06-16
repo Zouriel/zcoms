@@ -33,6 +33,10 @@ type ipcRequest struct {
 	Count    int    `json:"count,omitempty"`    // number of history messages (read)
 	Download bool   `json:"download,omitempty"` // download media in a read
 
+	// mark_read: which messages of a chat to mark read.
+	ChatID     int64   `json:"chat_id,omitempty"`
+	MessageIDs []int64 `json:"message_ids,omitempty"`
+
 	// Errand ops.
 	Brief     string `json:"brief,omitempty"`      // what to ask / produce (errand_start)
 	Deliver   bool   `json:"deliver,omitempty"`    // also send the deliverable to the contact
@@ -54,6 +58,17 @@ type IPCMessage struct {
 	File      string `json:"file,omitempty"` // local path if media was downloaded
 }
 
+// UnreadItem is one unread 1:1 message returned by the "unread" op (Telegram
+// only — components merge WhatsApp via the sidecar). JSON-compatible with
+// zcoms-sdk/ipc.UnreadItem so the external triage client decodes it directly.
+type UnreadItem struct {
+	Sender string `json:"sender"`
+	Text   string `json:"text"`
+	When   int64  `json:"when"` // unix seconds
+	ChatID int64  `json:"chat_id"`
+	MsgID  int64  `json:"msg_id"`
+}
+
 type ipcResponse struct {
 	OK        bool         `json:"ok"`
 	MessageID int64        `json:"message_id,omitempty"`
@@ -61,6 +76,7 @@ type ipcResponse struct {
 	Reply     string       `json:"reply,omitempty"`
 	Label     string       `json:"label,omitempty"`
 	Messages  []IPCMessage `json:"messages,omitempty"`
+	Unread    []UnreadItem `json:"unread,omitempty"`
 	Error     string       `json:"error,omitempty"`
 }
 
