@@ -65,7 +65,9 @@ docker run --rm \
     export PATH=/usr/local/go/bin:$PATH
     export GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomod GOTOOLCHAIN=local
     cd /src
-    CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -o /out/tg .
+    # -buildvcs=false: the repo is bind-mounted with a different owner than the
+    # container user, so git refuses VCS stamping ("dubious ownership", exit 128).
+    CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -o /out/tg .
 
     # --- bundle OpenSSL 1.1 + make libs self-referential ---
     SSLDIR=/usr/lib/x86_64-linux-gnu
