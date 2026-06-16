@@ -28,7 +28,7 @@ type triageMessage struct {
 
 // readPlan lists the messages to mark read after a triage pass, per platform.
 type readPlan struct {
-	TG map[int64][]int64   // tg chatID -> message IDs
+	TG map[int64][]int64   // Telegram chatID -> message IDs
 	WA map[string][]string // wa chatID -> message IDs
 }
 

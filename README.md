@@ -392,15 +392,15 @@ Details in [docs/AGENT-BRIDGE.md](docs/AGENT-BRIDGE.md).
 
 ## Use with Claude / AI agents
 
-There's a companion [**Claude Agent Skill**](https://github.com/Zouriel/tgcli-skill) that teaches
+There's a companion [**Claude Agent Skill**](https://github.com/Zouriel/zcoms-skill) that teaches
 Claude Code (and any agent supporting the skills standard) how to drive `zc` — so it can notify you,
 ask a question and wait for your reply, converse, and send/receive files on its own:
 
-**→ [github.com/Zouriel/tgcli-skill](https://github.com/Zouriel/tgcli-skill)**
+**→ [github.com/Zouriel/zcoms-skill](https://github.com/Zouriel/zcoms-skill)**
 
 ```sh
-git clone https://github.com/Zouriel/tgcli-skill
-cp -r tgcli-skill/skills/tg ~/.claude/skills/tg
+git clone https://github.com/Zouriel/zcoms-skill
+cp -r zcoms-skill/skills/zc ~/.claude/skills/zc
 ```
 
 Then tell the agent your Telegram `@username`, and it will reach you on Telegram when it finishes a
