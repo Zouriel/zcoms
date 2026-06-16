@@ -140,3 +140,22 @@ func ParseUpdateNewMessage(updateJSON string) (*UpdateNewMessage, bool) {
 	}
 	return &u, true
 }
+
+// ParseUpdateAuthorizationState returns the new authorization state from an
+// updateAuthorizationState event (false for any other update), so a long-running
+// client can react when the session is logged out or closed remotely.
+func ParseUpdateAuthorizationState(updateJSON string) (AuthorizationState, bool) {
+	var u struct {
+		Type               string `json:"@type"`
+		AuthorizationState struct {
+			Type string `json:"@type"`
+		} `json:"authorization_state"`
+	}
+	if err := json.Unmarshal([]byte(updateJSON), &u); err != nil {
+		return AuthStateUnknown, false
+	}
+	if u.Type != "updateAuthorizationState" {
+		return AuthStateUnknown, false
+	}
+	return AuthorizationState(u.AuthorizationState.Type), true
+}

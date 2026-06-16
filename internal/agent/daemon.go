@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ type userState struct {
 	locationPath  string
 	effectiveRole Role    // user role capped by the location's max_role
 	backend       Backend // resolved agent backend ("" = none installed)
+	forceBackend  Backend // per-session backend override (e.g. `chat` pins codex); "" = use backend
 	sessionID     string  // active agent session ("" = will start fresh)
 
 	pendingKind     string    // "location" | "session" | ""
@@ -30,6 +32,13 @@ type userState struct {
 	pendingFiles    []string  // files saved to tg-uploads/, to attach to the next turn
 	busy            bool      // an agent run is in flight
 	awaitingConfirm bool      // a plan is waiting for the user's yes/no (confirm role)
+
+	// Interactive-triage session: when set, agent turns may emit `SEND <idx> | text`
+	// directives that the daemon routes to the batch's recipients (and only them).
+	triageReply      bool
+	triageRecipients []Recipient
+	triageSeed       string // system prompt prepended to the first turn, then cleared
+	triageSession    bool   // this session IS the persistent triage brain (interact triage)
 }
 
 type daemon struct {
@@ -48,6 +57,11 @@ type daemon struct {
 	pendingAsk    map[int64][]chan string // user id -> queued `tg ask` waiters
 	lastAutoReply map[int64]time.Time     // user id -> last auto-reply time
 	nameCache     map[int64]string        // user id -> display name
+	errands       map[string]*Errand      // errand id -> dispatched questioning task
+
+	// triageMu serializes use of the persistent triage-brain session so the
+	// scheduled pass and an `interact triage` turn never drive it concurrently.
+	triageMu sync.Mutex
 }
 
 // RunDaemon resolves the allow-list, greets each member, then services incoming
@@ -64,6 +78,14 @@ func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow 
 		pendingAsk:    map[int64][]chan string{},
 		lastAutoReply: map[int64]time.Time{},
 		nameCache:     map[int64]string{},
+		errands:       map[string]*Errand{},
+	}
+
+	// Reload any errands persisted before a restart so they keep running.
+	if saved, err := LoadErrands(); err == nil {
+		for _, e := range saved {
+			d.errands[e.ID] = e
+		}
 	}
 
 	if err := d.serveIPC(); err != nil {
@@ -123,47 +145,95 @@ func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow 
 		fmt.Println("  ! triage enabled but main_user not resolved — digests have nowhere to go")
 	}
 	go d.runTriageLoop() // always on; it honors the enabled flag (re-read each cycle)
+	go d.runErrandLoop() // advances WhatsApp errands (no push) and resumes errands after a restart
 
 	for {
 		updateJSON, err := tdlib.ReceiveUpdates(tdjson)
 		if err != nil || updateJSON == "" {
 			continue
 		}
-		u, ok := tdlib.ParseUpdateNewMessage(updateJSON)
-		if !ok || u.Message.IsOutgoing {
-			continue
-		}
-		if u.Message.SenderID.Type != "messageSenderUser" {
-			continue
-		}
-
-		// A reply from anyone with an outstanding `tg ask` resolves it first,
-		// taking precedence over bridge handling.
-		if d.resolvePendingAsk(u.Message.SenderID.UserID, replyText(u.Message.Content)) {
-			continue
-		}
-
-		d.mu.Lock()
-		st, allowed := d.byUser[u.Message.SenderID.UserID]
-		if allowed {
-			st.chatID = u.Message.ChatID
-		}
-		d.mu.Unlock()
-		if !allowed {
-			// Not on the allow-list: auto-reply (if enabled) and buffer for triage.
-			d.handleNonAllowlisted(u.Message)
-			continue
-		}
-
-		if u.Message.Content.Type != "messageText" {
-			fmt.Printf("[bridge] %s: <%s>\n", st.username, u.Message.Content.Type)
-			d.handleIncomingFile(st, u.Message)
-			continue
-		}
-		text := strings.TrimSpace(u.Message.Content.Text.Text)
-		fmt.Printf("[bridge] %s: %s\n", st.username, snippet(text, 100))
-		d.handle(st, text)
+		d.dispatchUpdate(updateJSON)
 	}
+}
+
+// dispatchUpdate handles one incoming TDLib update. It runs under a recover so a
+// panic parsing untrusted message JSON can never crash the daemon's receive loop.
+func (d *daemon) dispatchUpdate(updateJSON string) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("[bridge] recovered from panic handling update: %v\n", r)
+		}
+	}()
+
+	// If Telegram logs this session out remotely, keep config.json honest so the
+	// auth_state field doesn't stay "authorized" forever (the daemon can't run
+	// `tg logout`, which is what would normally reset it).
+	if state, ok := tdlib.ParseUpdateAuthorizationState(updateJSON); ok {
+		if state == tdlib.AuthStateLoggingOut || state == tdlib.AuthStateClosed {
+			fmt.Printf("[bridge] ⚠️ Telegram session %s — marking config unauthorized; the daemon needs `tg login` (stop it first).\n", state)
+			markConfigUnauthorized()
+		}
+		return
+	}
+
+	u, ok := tdlib.ParseUpdateNewMessage(updateJSON)
+	if !ok || u.Message.IsOutgoing {
+		return
+	}
+	if u.Message.SenderID.Type != "messageSenderUser" {
+		return
+	}
+
+	// Only ever act on 1:1 private chats. In TDLib a private chat's id
+	// equals the peer's user id; anything else is a group/supergroup/
+	// channel. The bridge and auto-reply MUST stay completely silent in
+	// groups — being added to one must never trigger a flood of replies.
+	// Group messages are simply ignored here; the scheduled triage pass is
+	// the only thing that reads, and it already skips non-private chats.
+	if u.Message.ChatID != u.Message.SenderID.UserID {
+		return
+	}
+
+	// A reply from anyone with an outstanding `tg ask` resolves it first,
+	// taking precedence over bridge handling.
+	if d.resolvePendingAsk(u.Message.SenderID.UserID, replyText(u.Message.Content)) {
+		return
+	}
+
+	// An active errand for this contact takes over the conversation: route their
+	// reply into it and never auto-reply or triage them while it's running.
+	if e := d.activeErrandForTG(u.Message.ChatID); e != nil {
+		d.routeTGErrandReply(e, u.Message)
+		return
+	}
+
+	d.mu.Lock()
+	st, allowed := d.byUser[u.Message.SenderID.UserID]
+	if allowed {
+		st.chatID = u.Message.ChatID
+	}
+	d.mu.Unlock()
+	if !allowed {
+		// Not on the allow-list: auto-reply (if enabled) and buffer for triage.
+		d.handleNonAllowlisted(u.Message)
+		return
+	}
+
+	// Mark the owner's incoming message read immediately so the bridge chat never
+	// accumulates unread — covers every allow-listed mode (chat, interact triage,
+	// commands, files) since they all flow through here.
+	if err := tdlib.MarkMessagesRead(d.tdjson, d.clientID, u.Message.ChatID, []int64{u.Message.ID}); err != nil {
+		fmt.Printf("[bridge] couldn't mark message read: %v\n", err)
+	}
+
+	if u.Message.Content.Type != "messageText" {
+		fmt.Printf("[bridge] %s: <%s>\n", st.username, u.Message.Content.Type)
+		d.handleIncomingFile(st, u.Message)
+		return
+	}
+	text := strings.TrimSpace(u.Message.Content.Text.Text)
+	fmt.Printf("[bridge] %s: %s\n", st.username, snippet(text, 100))
+	d.handle(st, text)
 }
 
 func (d *daemon) handle(st *userState, text string) {
@@ -171,6 +241,13 @@ func (d *daemon) handle(st *userState, text string) {
 		return
 	}
 	lower := strings.ToLower(text)
+
+	// Errand management commands work any time (they don't touch the user's own
+	// agent session), so handle them before the busy gate.
+	if lower == "errand" || lower == "errands" || strings.HasPrefix(lower, "errand ") {
+		d.handleErrandCommand(st, strings.TrimSpace(text))
+		return
+	}
 
 	d.mu.Lock()
 	busy := st.busy
@@ -201,11 +278,22 @@ func (d *daemon) handle(st *userState, text string) {
 	case "end", "stop", "exit", "/end":
 		d.mu.Lock()
 		st.sessionID, st.pendingKind, st.awaitingConfirm = "", "", false
+		st.triageReply, st.triageRecipients, st.triageSeed, st.triageSession = false, nil, "", false
+		st.forceBackend = ""
 		d.mu.Unlock()
 		d.send(st.chatID, "Detached. Send 'locations' to pick where to work.")
 		return
 	case "status", "/status":
 		d.send(st.chatID, d.statusLine(st))
+		return
+	case "interact triage", "interact-triage", "triage-reply":
+		d.startTriageReply(st)
+		return
+	case "chat", "/chat":
+		d.startChat(st)
+		return
+	case "triage reset", "reset triage", "triage-reset", "new triage":
+		d.resetTriageBrain(st)
 		return
 	}
 
@@ -319,17 +407,21 @@ func (d *daemon) listSessions(st *userState) {
 }
 
 func (d *daemon) selectNumber(st *userState, n int) {
+	// Snapshot the pending menu under the lock so the range-check and indexing
+	// below can't race a concurrent listLocations/listSessions reassigning them.
 	d.mu.Lock()
 	kind := st.pendingKind
+	pendingLoc := st.pendingLoc
+	pendingSess := st.pendingSess
 	d.mu.Unlock()
 
 	switch kind {
 	case "location":
-		if n < 1 || n > len(st.pendingLoc) {
+		if n < 1 || n > len(pendingLoc) {
 			d.send(st.chatID, "Out of range. Send 'locations' again.")
 			return
 		}
-		name := st.pendingLoc[n-1]
+		name := pendingLoc[n-1]
 		cfg := d.locations[name]
 		role := st.entry.Role
 		if cfg.MaxRole.valid() {
@@ -338,15 +430,16 @@ func (d *daemon) selectNumber(st *userState, n int) {
 		d.mu.Lock()
 		st.location, st.locationPath, st.effectiveRole = name, cfg.Path, role
 		st.sessionID, st.pendingKind, st.awaitingConfirm = "", "", false
+		st.forceBackend = "" // a picked location uses the user's default backend
 		d.mu.Unlock()
 		d.send(st.chatID, fmt.Sprintf("📍 %s (%s)\nRole here: %s\nSend 'resume' to continue a past session, or just send a message to start a new one.", name, cfg.Path, role))
 
 	case "session":
-		if n < 1 || n > len(st.pendingSess) {
+		if n < 1 || n > len(pendingSess) {
 			d.send(st.chatID, "Out of range. Send 'resume' again.")
 			return
 		}
-		sess := st.pendingSess[n-1]
+		sess := pendingSess[n-1]
 		d.mu.Lock()
 		st.sessionID, st.pendingKind = sess.ID, ""
 		d.mu.Unlock()
@@ -356,6 +449,61 @@ func (d *daemon) selectNumber(st *userState, n int) {
 	default:
 		d.send(st.chatID, "Nothing to select. Send 'help'.")
 	}
+}
+
+// startChat puts the user in a full-power, general-purpose agent session: their
+// allow-listed role (full for the owner) in their home directory, pinned to the
+// codex backend (same as triage). Unlike `interact triage`, it is a normal agent
+// session with no directive protocol — it can create/edit files, run commands,
+// SSH into servers, etc. A context seed (first turn) tells it the owner's
+// Telegram/WhatsApp are already wired through this tool. Resumes until `new`/`end`.
+func (d *daemon) startChat(st *userState) {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		home = d.currentTriage().Dir // sensible fallback
+	}
+	d.mu.Lock()
+	st.location, st.locationPath, st.effectiveRole = "chat", home, st.entry.Role
+	st.sessionID, st.pendingKind, st.awaitingConfirm = "", "", false
+	st.triageReply, st.triageSession, st.triageRecipients = false, false, nil
+	st.forceBackend = d.triageBackend // pin codex (falls back to default if unset)
+	st.triageSeed = buildChatSeed()
+	role := st.effectiveRole
+	d.mu.Unlock()
+	d.send(st.chatID, fmt.Sprintf(
+		"💬 Chat on — general-purpose assistant in %s (role: %s).\n"+
+			"I can create/edit files, run commands, SSH into servers, etc. "+
+			"Send `new` to reset the session or `end` to detach.", home, role))
+}
+
+// buildChatSeed is prepended to the chat session's first turn so the agent knows
+// the owner's Telegram and WhatsApp are ALREADY connected through this tool and
+// can be reached with the `tg` CLI — instead of telling the owner to log in.
+func buildChatSeed() string {
+	return strings.Join([]string{
+		"You are the owner's personal assistant, running on their own machine via the `tg`",
+		"bridge with full shell access. Their Telegram AND WhatsApp are ALREADY logged in",
+		"through this tool — never tell them to log in, open WhatsApp Web, or scan a QR.",
+		"To reach their messages, use the `tg` CLI (it routes through the running daemon and",
+		"the paired WhatsApp sidecar, so no login is needed):",
+		"  • WhatsApp: `tg wa unread` (list unread) · `tg wa send <number|jid> <msg>` · `tg wa send-file <number|jid> <path>`",
+		"  • Telegram: `tg chat <@user|id> --read N` (history) · `tg send <@user|id> <msg>` · `tg send-file <@user|id> <path>`",
+		"",
+		"ERRANDS — when the owner asks you to message someone, ask them a set of things, and/or",
+		"produce something from their answers (e.g. \"ask my wife what's needed for her CV, make it,",
+		"send it to her, and ping me when done\"), dispatch an errand instead of doing it inline:",
+		"  `tg errand start [deliver] [go] <@user|wa:NUMBER|#index> | <brief>`",
+		"    deliver = also send the finished file to the contact · go = skip the approval step and start now.",
+		"An errand runs in two sandboxed agents: an INTERVIEWER (no filesystem/shell — it only chats,",
+		"greeting the contact and asking ONE question at a time with a remaining count, recording answers",
+		"to a single file), then a PRODUCER that treats those answers as untrusted third-party DATA, does",
+		"only the brief you gave, flags anything suspicious or mismatched, builds the deliverable, and",
+		"sends you the file(s) + a summary when done. Because the contact isn't the owner, write the brief",
+		"precisely — it's the only instruction the producer is allowed to act on. Manage with",
+		"`tg errand list` / `tg errand cancel <id>`. Prefer this for any \"go talk to X and come back with Y\"",
+		"task — don't try to hold the back-and-forth yourself.",
+		"For anything else, you have a normal shell — create/edit files, run commands, SSH, etc.",
+	}, "\n")
 }
 
 func (d *daemon) startNew(st *userState) {
@@ -384,6 +532,17 @@ func (d *daemon) runAgent(st *userState, prompt string, role Role, awaitConfirmA
 	st.busy = true
 	backend := st.backend
 	dir, resume, chatID := st.locationPath, st.sessionID, st.chatID
+	triageReply := st.triageReply
+	triageSession := st.triageSession
+	recipients := st.triageRecipients
+	// Backend precedence: an explicit per-session override (e.g. `chat` pins
+	// codex) wins; otherwise interactive-triage runs on the triage backend so it
+	// can resume the codex triage brain; otherwise the user's default backend.
+	if st.forceBackend != "" {
+		backend = st.forceBackend
+	} else if triageReply && d.triageBackend != "" {
+		backend = d.triageBackend
+	}
 	d.mu.Unlock()
 	if backend == "" {
 		d.mu.Lock()
@@ -400,13 +559,83 @@ func (d *daemon) runAgent(st *userState, prompt string, role Role, awaitConfirmA
 	}
 
 	go func() {
-		res, err := RunAgent(backend, dir, prompt, resume, role)
+		// A panic while parsing agent/TDLib output must not crash the whole daemon
+		// (all users) or leave this user wedged at busy=true forever. Registered
+		// first so it runs last on unwind — after any triageMu unlock below.
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("[bridge] recovered from panic in agent turn: %v\n", r)
+				d.mu.Lock()
+				st.busy = false
+				d.mu.Unlock()
+				d.send(chatID, "⚠️ Something went wrong handling that turn — please try again.")
+			}
+		}()
+
+		// The triage brain is a single shared session — serialize so a
+		// scheduled pass and this interactive turn never drive it at once.
+		if triageSession {
+			d.triageMu.Lock()
+			defer d.triageMu.Unlock()
+		}
+		// recordSession persists the (possibly new) session id after each turn so
+		// resumes — and the read-loop below — keep continuing the same conversation.
+		curSession := resume
+		recordSession := func(r RunResult) {
+			if r.SessionID == "" {
+				return
+			}
+			curSession = r.SessionID
+			d.mu.Lock()
+			st.sessionID = r.SessionID
+			d.mu.Unlock()
+			if triageSession {
+				_ = SaveTriageSessionID(r.SessionID)
+			}
+		}
+
+		// Interactive triage/chat agents get a writable staging dir as their cwd so
+		// they can produce files (e.g. screenshots) to SENDFILE — still no network.
+		runDir, stagingWritable := dir, false
+		if triageReply {
+			if sd, serr := ensureStagingDir(); serr == nil {
+				runDir, stagingWritable = sd, true
+			}
+		}
+
+		res, err := RunAgent(backend, runDir, prompt, resume, role, stagingWritable)
+		recordSession(res)
+
+		// Triage/chat agents are sandboxed and can't reach Telegram. When the agent
+		// emits READ directives, the daemon fetches that history and feeds it back,
+		// resuming the same session, until the agent stops asking (or the cap hits).
+		if err == nil && triageReply {
+			for round := 0; round < maxTriageReadRounds; round++ {
+				reads := parseReadDirectives(res.Text)
+				if len(reads) == 0 {
+					break
+				}
+				d.send(chatID, "🔎 reading…")
+				feedback := d.runTriageReads(reads)
+				res, err = RunAgent(backend, runDir, feedback, curSession, role, stagingWritable)
+				recordSession(res)
+				if err != nil {
+					break
+				}
+			}
+			// If the agent still wants to read after the cap, it would otherwise
+			// answer referencing history it never received. Tell it to wrap up.
+			if err == nil && len(parseReadDirectives(res.Text)) > 0 {
+				res, err = RunAgent(backend, runDir,
+					"Read limit reached for this turn — no more chats can be fetched now. "+
+						"Answer the owner using only what you already have (or SEND if asked).",
+					curSession, role, stagingWritable)
+				recordSession(res)
+			}
+		}
 
 		d.mu.Lock()
 		st.busy = false
-		if res.SessionID != "" {
-			st.sessionID = res.SessionID
-		}
 		if err == nil && awaitConfirmAfter {
 			st.awaitingConfirm = true
 		}
@@ -421,6 +650,12 @@ func (d *daemon) runAgent(st *userState, prompt string, role Role, awaitConfirmA
 		}
 		if strings.TrimSpace(res.Text) == "" {
 			d.send(chatID, "(no output)")
+			return
+		}
+		if triageReply {
+			// Intercept SEND directives, route them to the batch's recipients,
+			// strip them from view, and post the result + send confirmations.
+			d.handleTriageReplyOutput(chatID, recipients, res.Text)
 			return
 		}
 		d.send(chatID, res.Text)
@@ -457,6 +692,9 @@ func (d *daemon) helpText(st *userState) string {
 		"  new — start a fresh session here",
 		"  status — show current location/session",
 		"  end — detach from the current session",
+		"  interact triage — talk to the triage agent (same memory) & reply to people",
+		"  chat — full general-purpose assistant (files, shell, SSH) in your home dir",
+		"  triage reset — wipe the triage agent's memory (fresh session next pass)",
 		"Anything else you type is sent to the agent.",
 		"",
 		"Your role: " + string(st.entry.Role),

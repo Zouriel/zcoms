@@ -93,7 +93,7 @@ func executeSignOut(hardSignOut bool) (string, string, error) {
 }
 
 func clearLocalSessionState() {
-	AppConfig.AuthState = "unauthorized"
+	AppConfig.AuthState = config.AuthStateUnauthorized
 	AppConfig.Username = ""
 	AppConfig.PhoneNumber = ""
 }

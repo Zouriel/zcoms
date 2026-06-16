@@ -1,0 +1,18 @@
+[Unit]
+Description=TgCli WhatsApp bridge (Baileys sidecar)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Edit this path if your TgCli checkout lives elsewhere.
+WorkingDirectory=%h/personal/TgCli/whatsapp-bridge
+ExecStart=/usr/bin/node index.js
+# Socket + auth dir default to ~/.config/tg/{wa.sock,wa-auth}; override here if needed:
+# Environment=WA_SOCK=%h/.config/tg/wa.sock
+# Environment=WA_AUTH=%h/.config/tg/wa-auth
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

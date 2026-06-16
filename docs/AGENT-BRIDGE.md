@@ -9,13 +9,17 @@ auto-reply to strangers and DM you an hourly digest of important messages.
 ## How it runs
 
 The daemon owns the single Telegram session and listens on a Unix socket
-(`~/.config/tg/daemon.sock`, owner-only `0600`). `tg send`, `tg ask`, `tg chat`, and
-`tg send-file` automatically route through that socket when the daemon is running, and
-fall back to opening their own session when it isn't.
+(`~/.config/tg/daemon.sock`, owner-only `0600`). `tg send`, `tg ask`, `tg send-file`,
+and `tg chat` — **including `tg chat <id> --read N`** to snapshot a chat's recent
+history — automatically route through that socket when the daemon is running, and fall
+back to opening their own session when it isn't. So reading and replying to any chat
+work normally while the daemon is up; there's no need to stop it.
 
 Commands that need their own interactive session — `tail`, `chats`, `download`, `auth`,
 `login`, `logout` — can't share the daemon's session, so while it's running they exit
-with a clear message instead of a lock error. Stop the daemon to use them:
+with a clear message instead of a lock error. (`auth_state` in `config.json` is written
+by the daemon on startup and by `auth`/`login`/`logout`, so it tracks the live session.)
+Stop the daemon to use the session-owning commands:
 
 ```sh
 systemctl --user stop tg-daemon
@@ -81,8 +85,57 @@ Optional "secretary" features for messages from people **not** on the allow-list
 - **Triage** — every `every_minutes`, the buffered stranger messages are run through the
   `agent` (read-only) in `dir`; it decides which are important and DMs `main_user` a bullet
   digest. Nothing is sent if none are important.
+- **`chat`** — a full general-purpose agent session in your home directory at your
+  allow-listed role (full for the owner): it can create/edit files, run shell commands,
+  SSH into servers, etc. It is a normal Claude Code session (no directive protocol, no
+  sandbox at `full`), resuming across turns until `new`/`end`. ⚠️ This is unrestricted —
+  only grant it to fully-trusted allow-listed users.
+- **`interact triage`** — talk to the triage agent (shared brain) and have it read or reply
+  to chats. The agent is sandboxed and never touches Telegram directly; instead it emits
+  directives the daemon executes on its behalf:
+  - `READ <@username|chat_id> [count]` — the daemon fetches that chat's recent history and
+    feeds it back, so the agent can answer questions like "what did X last say?" for **any**
+    chat (not just the unread batch), even while the daemon is running.
+  - `SEND <index|@username|chat_id> | message` — reply to someone in the batch by index, or
+    to **anyone** by @username / chat id. The daemon sends as you; the agent only drafts.
+  - `SENDFILE <index|@username|chat_id> | <path> [| caption]` — upload a local file (photo/
+    document). The agent's working dir is a writable scratch space (`<configdir>/agent-staging`,
+    network off) so it can produce a file (e.g. a screenshot) and then SENDFILE it; the daemon
+    does the upload. Telegram only (WhatsApp file send isn't supported yet).
 
 These run even with an empty allow-list ("secretary-only" mode).
+
+## WhatsApp triage (optional Baileys sidecar)
+
+Triage and replies can cover **WhatsApp** alongside Telegram, via a small Node
+sidecar in [`whatsapp-bridge/`](../whatsapp-bridge/README.md). It is **off by
+default** — with `whatsapp.enabled:false` (or the block absent) behavior is
+identical to a Telegram-only build.
+
+```json
+{
+  "whatsapp": { "enabled": false, "socket": "/home/you/.config/tg/wa.sock", "mark_read_on_reply": false }
+}
+```
+
+When enabled and the sidecar is running:
+
+- **Unified digest** — each triage pass merges unread WhatsApp 1:1s with the
+  Telegram ones into the **same** read-only AI pass and the **same** digest DM.
+  Each line is tagged `[WhatsApp]` / `[Telegram]` so you know where to look. On
+  any sidecar error, triage logs `[triage]` and continues with Telegram only.
+- **`interact triage`** — send this to the bridge to start a session seeded with
+  the **last triage batch** (persisted to `~/.config/tg/last-triage.json`, so it
+  survives restarts and works long after the digest). Tell the agent who to
+  reply to; it can only reply to people **in that batch, by index**, and the
+  daemon (never the agent) sends — over WhatsApp or Telegram as appropriate.
+  `end` to finish.
+
+> ⚠️ Baileys is an **unofficial** WhatsApp client and violates WhatsApp's ToS;
+> the paired number carries a ban risk. Prefer a **secondary number** and enable
+> 2FA. See the [sidecar README](../whatsapp-bridge/README.md). `mark_read_on_reply`
+> defaults **off** for WhatsApp (triage already marks threads read at digest
+> time). Check status with `tg wa status`.
 
 ## ⚠️ Security model — read before adding anyone
 

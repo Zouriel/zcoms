@@ -23,7 +23,7 @@ func codexSandboxArgs(role Role) []string {
 
 // RunCodex runs one Codex turn (new session or resume) and returns the final
 // message plus the thread/session id for follow-ups.
-func RunCodex(dir, prompt, resumeID string, role Role) (RunResult, error) {
+func RunCodex(dir, prompt, resumeID string, role Role, stagingWritable bool) (RunResult, error) {
 	lastFile, err := os.CreateTemp("", "codex-last-*.txt")
 	if err != nil {
 		return RunResult{}, err
@@ -39,10 +39,21 @@ func RunCodex(dir, prompt, resumeID string, role Role) (RunResult, error) {
 		args = append(args, "exec")
 	}
 	args = append(args, "--json", "--skip-git-repo-check", "-o", lastPath)
-	if resumeID == "" {
+	switch {
+	case stagingWritable:
+		// Sandboxed triage/chat agent: dir is a writable scratch space (so it can
+		// produce files to SENDFILE) but network stays OFF — it still can't reach
+		// Telegram itself. Set via -c so it also applies on `exec resume` (which
+		// rejects -s); writable_roots scopes writes to dir, leaving $HOME read-only.
+		args = append(args, "-c", `sandbox_mode="workspace-write"`)
+		args = append(args, "-c", fmt.Sprintf(`sandbox_workspace_write.writable_roots=["%s"]`, dir))
+		if resumeID == "" {
+			args = append(args, "-C", dir)
+		}
+	case resumeID == "":
 		args = append(args, "-C", dir)
 		args = append(args, codexSandboxArgs(role)...)
-	} else if role == RoleFull {
+	case role == RoleFull:
 		// resume doesn't take -s; only the full bypass is settable.
 		args = append(args, "--dangerously-bypass-approvals-and-sandbox")
 	}
@@ -54,11 +65,13 @@ func RunCodex(dir, prompt, resumeID string, role Role) (RunResult, error) {
 
 	cmd := exec.CommandContext(ctx, codexBin, args...)
 	cmd.Dir = dir
-	cmd.Stdin = nil // don't let codex wait on stdin
+	cmd.Stdin = nil    // don't let codex wait on stdin
+	hardenProcess(cmd) // kill the whole child group on timeout (codex spawns helpers)
 
-	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	stdout := &boundedBuffer{max: maxAgentStdout}
+	stderr := &boundedBuffer{max: maxAgentStderr}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 
 	runErr := cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {

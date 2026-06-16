@@ -7,6 +7,12 @@ import (
 	"path/filepath"
 )
 
+// AuthState values for Config.AuthState.
+const (
+	AuthStateAuthorized   = "authorized"
+	AuthStateUnauthorized = "unauthorized"
+)
+
 type Config struct {
 	TdlibDir    string `json:"tdlib_dir"`
 	AuthState   string `json:"auth_state"`
@@ -83,7 +89,7 @@ func applyDefaults(configuration Config, appDirectory string) Config {
 	}
 
 	if configuration.AuthState == "" {
-		configuration.AuthState = "unauthorized"
+		configuration.AuthState = AuthStateUnauthorized
 	}
 
 	return configuration

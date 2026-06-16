@@ -9,6 +9,9 @@
 # Release bundles
 dist/
 
+# Runtime data the bridge writes (received files, etc.) — may be private
+tg-uploads/
+
 # Air hot-reload temp dir
 tmp/
 

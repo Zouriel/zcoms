@@ -1,0 +1,19 @@
+{
+  "name": "tg-whatsapp-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Baileys sidecar for TgCli: serves unread/read/send over a Unix socket so the Go daemon can triage and reply to WhatsApp alongside Telegram.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "baileys": "7.0.0-rc13",
+    "pino": "^9.0.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

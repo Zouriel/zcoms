@@ -93,12 +93,24 @@ func (t TriageSettings) Describe() string {
 	return "every " + t.interval().String()
 }
 
+// WhatsAppSettings configures the optional Baileys sidecar that lets triage
+// (and `interact triage`) read and reply to WhatsApp alongside Telegram. It is
+// disabled by default: with Enabled=false the daemon never touches the socket
+// and behavior is identical to a Telegram-only build.
+type WhatsAppSettings struct {
+	Enabled         bool   `json:"enabled"`
+	Socket          string `json:"socket"`             // path to the sidecar's Unix socket
+	MarkReadOnReply bool   `json:"mark_read_on_reply"` // mark a WA thread read when the agent replies (default off)
+	ReadReceipts    bool   `json:"read_receipts"`      // let triage send WA read receipts/blue ticks (default off: read silently)
+}
+
 // Settings drives the auto-reply and triage features (agent-settings.json).
 type Settings struct {
-	MainUser         string         `json:"main_user"`          // @username to notify / send digests to
-	AutoReplyEnabled bool           `json:"auto_reply_enabled"` // reply to non-allow-listed senders
-	AutoReply        string         `json:"auto_reply"`         // the canned reply text
-	Triage           TriageSettings `json:"triage"`
+	MainUser         string           `json:"main_user"`          // @username to notify / send digests to
+	AutoReplyEnabled bool             `json:"auto_reply_enabled"` // reply to non-allow-listed senders
+	AutoReply        string           `json:"auto_reply"`         // the canned reply text
+	Triage           TriageSettings   `json:"triage"`
+	WhatsApp         WhatsAppSettings `json:"whatsapp"`
 }
 
 const settingsFile = "agent-settings.json"
@@ -124,6 +136,12 @@ func LoadOrSeedSettings() (Settings, string, error) {
 				Schedule: "1h",
 				Dir:      home,
 			},
+			WhatsApp: WhatsAppSettings{
+				Enabled:         false,
+				Socket:          filepath.Join(dir, "wa.sock"),
+				MarkReadOnReply: false,
+				ReadReceipts:    false,
+			},
 		}
 		if err := writeJSON(path, seed); err != nil {
 			return Settings{}, path, err
@@ -145,6 +163,9 @@ func LoadOrSeedSettings() (Settings, string, error) {
 	}
 	if settings.Triage.Dir == "" {
 		settings.Triage.Dir = home
+	}
+	if settings.WhatsApp.Socket == "" {
+		settings.WhatsApp.Socket = filepath.Join(dir, "wa.sock")
 	}
 	return settings, path, nil
 }

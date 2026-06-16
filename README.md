@@ -3,8 +3,9 @@
 A Telegram CLI built on [TDLib](https://github.com/tdlib/td) — send & receive messages and
 media, follow chats live, and ask questions that block until you get a reply, all from your
 terminal. It's built to be **scripted** (CI, cron, AI-agent loops), and ships an optional
-**agent bridge** that lets you drive **Claude Code / Codex** from Telegram and get an
-AI-triaged digest of incoming messages.
+**agent bridge** that lets you drive **Claude Code / Codex** from Telegram, get an
+AI-triaged digest of incoming messages, and dispatch **errands** — autonomous agents that
+go ask a contact what's needed and bring back a finished file.
 
 Works on **Windows** and **Linux**.
 
@@ -117,6 +118,8 @@ Authenticate once with your phone number. The session is persisted locally — y
 | `tg agents [set <task> <agent>]` | Show/set which agent (claude/codex) handles which task |
 | `tg locations [add\|remove …]` | List/add/remove agent-bridge project locations |
 | `tg triage [30m\|1h\|…\|twice-daily\|on\|off]` | Show/set the incoming-message triage schedule |
+| `tg errand [start\|list\|cancel …]` | Dispatch/manage an agent that questions a contact and produces a deliverable |
+| `tg wa status` | Ping the optional WhatsApp sidecar (paired/connected) |
 
 The last three configure the optional **agent bridge** (below); the rest work standalone.
 
@@ -287,7 +290,8 @@ Four JSON files in the config dir (`~/.config/tg/`), all `0600`, auto-created on
   "main_user": "@you",
   "auto_reply_enabled": true,
   "auto_reply": "Message received — the owner will be notified shortly.",
-  "triage": { "enabled": true, "schedule": "1h", "dir": "/home/you" }
+  "triage": { "enabled": true, "schedule": "1h", "dir": "/home/you" },
+  "whatsapp": { "enabled": false, "socket": "/home/you/.config/tg/wa.sock", "mark_read_on_reply": false }
 }
 ```
 
@@ -313,8 +317,11 @@ resume      — list that project's past sessions; pick one to resume (with a su
 new         — start a fresh session in the current project
 status      — show current location / session / role
 end         — detach from the current session
+errand …    — dispatch/approve/manage an errand (see Errands below)
 ```
-Anything else you type is sent to the agent.
+Anything else you type is sent to the agent. You can also just *ask* in a `chat` session —
+e.g. "ask my wife what's needed for her CV, make it, send it to her, and ping me when done" —
+and it'll dispatch an errand for you.
 
 ### Run it as a service
 
@@ -344,6 +351,37 @@ tg triage 30m            # or 1h, 2h, 3h, 6h, 12h
 tg triage twice-daily    # ~08:00 and ~22:00
 tg triage off            # / on
 ```
+
+**WhatsApp (optional, off by default):** an unofficial [Baileys sidecar](whatsapp-bridge/README.md)
+lets triage merge unread WhatsApp 1:1s into the **same** digest, and the `interact triage`
+bridge command lets the agent reply to whoever wrote in — on WhatsApp or Telegram. Enable via
+the `whatsapp` block in `agent-settings.json`; check it with `tg wa status`. ⚠️ Baileys
+violates WhatsApp's ToS (ban risk) — prefer a secondary number.
+
+### Errands — send an agent to question a contact
+
+Dispatch an autonomous agent to message someone, ask them what's needed **one question at a
+time** (with a running count), and turn their answers into a finished file — e.g. *"ask my wife
+what's needed for her CV, make it, send it to her, and ping me when done."* Kick one off in
+plain language from a `chat` / `interact triage` session, or directly:
+
+```sh
+tg errand start @alice "collect what's needed and draft a 1-page bio"
+tg errand start --deliver --go wa:9607XXXXXXX "make a CV and send it to her"
+tg errand list           # active errands
+tg errand cancel <id>    # stop one
+```
+
+- `--deliver` also sends the finished file to the contact; `--go` skips the approval step.
+- By default the agent first DMs **you** the question plan to approve (`errand yes|edit|no <id>`),
+  then runs on its own — greeting the contact, asking one question at a time, and collecting any
+  files they send.
+- It runs as **two sandboxed agents**: an **interviewer** with no filesystem/shell access (it only
+  chats and records answers to a single file), then a **producer** that treats those answers as
+  untrusted third-party data, does only your original brief, flags anything suspicious or
+  mismatched, builds the deliverable, and sends **you** the file(s) plus a summary when done.
+- Works over Telegram or WhatsApp; the contact is excluded from triage/auto-reply while their
+  errand is running, and errands resume after a daemon restart.
 
 ### Security — read before adding anyone
 

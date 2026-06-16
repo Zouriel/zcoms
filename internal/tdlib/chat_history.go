@@ -20,6 +20,45 @@ func OpenChat(tdjson *TDJSON, clientID int32, chatID int64) error {
 	return err
 }
 
+// FetchChatHistorySnapshot returns up to limit recent messages (newest first)
+// WITHOUT opening the chat or marking anything read — for read-only peeks such as
+// `tg chat --read` and the daemon's read op / READ directive. It pages via the
+// same no-open primitive triage uses (historyPage). Prefer this over
+// FetchChatHistory whenever the caller must not emit read receipts.
+// maxSnapshotMessages is a hard ceiling so no single snapshot can page an entire
+// (possibly huge) conversation into memory, regardless of the requested limit.
+const maxSnapshotMessages = 1000
+
+func FetchChatHistorySnapshot(tdjson *TDJSON, clientID int32, chatID int64, limit int) ([]Message, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	if limit > maxSnapshotMessages {
+		limit = maxSnapshotMessages
+	}
+	collected := make([]Message, 0, limit)
+	var from int64 // 0 = newest
+	for len(collected) < limit {
+		batch := limit - len(collected)
+		if batch > 50 {
+			batch = 50
+		}
+		msgs, err := historyPage(tdjson, clientID, chatID, from, batch)
+		if err != nil {
+			return collected, err
+		}
+		if len(msgs) == 0 {
+			break
+		}
+		collected = append(collected, msgs...)
+		from = msgs[len(msgs)-1].ID // oldest in this page -> next page is older
+		if len(msgs) < batch {
+			break
+		}
+	}
+	return collected, nil
+}
+
 func FetchChatHistory(tdjson *TDJSON, clientID int32, chatID int64, limit int) ([]Message, error) {
 	if err := OpenChat(tdjson, clientID, chatID); err != nil {
 		return nil, err

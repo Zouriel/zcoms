@@ -71,12 +71,19 @@ func (d *daemon) dispatchAgentTurn(st *userState, text string) {
 	role := st.effectiveRole
 	files := st.pendingFiles
 	st.pendingFiles = nil
+	seed := st.triageSeed
+	st.triageSeed = ""
 	d.mu.Unlock()
 
 	prompt := text
 	if len(files) > 0 {
 		prompt = "(Files I just sent you, saved in this project — read them from there: " +
 			strings.Join(files, ", ") + ")\n\n" + text
+	}
+	if seed != "" {
+		// First turn of an interactive-triage session: prepend the recipient
+		// table + SEND-directive instructions ahead of the owner's instruction.
+		prompt = seed + "\nThe owner says:\n" + prompt
 	}
 
 	role2 := role

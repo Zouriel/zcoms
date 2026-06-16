@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"tg/internal/tdlib"
 )
@@ -47,6 +48,14 @@ func (d *daemon) serveIPC() error {
 
 func (d *daemon) handleIPC(conn net.Conn) {
 	defer conn.Close()
+	// A panic in any op (e.g. parsing odd TDLib content during a read) must not
+	// crash the whole daemon — surface it as an error response instead.
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("[ipc] recovered from panic: %v\n", r)
+			writeIPC(conn, ipcResponse{Error: fmt.Sprintf("internal error: %v", r)})
+		}
+	}()
 
 	line, err := bufio.NewReader(conn).ReadBytes('\n')
 	if err != nil && len(line) == 0 {
@@ -91,6 +100,38 @@ func (d *daemon) handleIPC(conn net.Conn) {
 		}
 		writeIPC(conn, ipcResponse{OK: true, ChatID: chatID, Label: label})
 
+	case "read":
+		chatID, _, err := d.resolveChat(req.To)
+		if err != nil {
+			writeIPC(conn, ipcResponse{Error: err.Error()})
+			return
+		}
+		count := req.Count
+		if count <= 0 {
+			count = 10
+		}
+		if count > maxIPCReadCount {
+			count = maxIPCReadCount // never let one read pull an unbounded history
+		}
+		history, err := tdlib.FetchChatHistorySnapshot(d.tdjson, d.clientID, chatID, count)
+		if err != nil {
+			writeIPC(conn, ipcResponse{Error: err.Error()})
+			return
+		}
+		// History comes newest-first; emit oldest-first so it reads naturally.
+		msgs := make([]IPCMessage, 0, len(history))
+		titleCache := map[int64]string{}
+		downloads := 0
+		for i := len(history) - 1; i >= 0; i-- {
+			dl := req.Download && downloads < maxReadDownloads
+			m := d.buildIPCMessage(history[i], titleCache, dl)
+			if m.File != "" {
+				downloads++
+			}
+			msgs = append(msgs, m)
+		}
+		writeIPC(conn, ipcResponse{OK: true, ChatID: chatID, Messages: msgs})
+
 	case "ask":
 		chatID, userID, err := d.resolveChat(req.To)
 		if err != nil {
@@ -126,6 +167,27 @@ func (d *daemon) handleIPC(conn net.Conn) {
 			d.removePending(userID, replyCh)
 		}
 
+	case "errand_start":
+		msg, err := d.startErrand(ErrandSpec{
+			Target: req.To, Brief: req.Brief, DeliverToTarget: req.Deliver, AutoStart: req.AutoStart,
+		})
+		if err != nil {
+			writeIPC(conn, ipcResponse{Error: err.Error()})
+			return
+		}
+		writeIPC(conn, ipcResponse{OK: true, Reply: msg})
+
+	case "errand_list":
+		writeIPC(conn, ipcResponse{OK: true, Reply: d.errandListText()})
+
+	case "errand_cancel":
+		e, ok := d.cancelErrand(req.ID)
+		if !ok {
+			writeIPC(conn, ipcResponse{Error: "no errand with id " + req.ID})
+			return
+		}
+		writeIPC(conn, ipcResponse{OK: true, Reply: "Cancelled errand " + e.ID})
+
 	default:
 		writeIPC(conn, ipcResponse{Error: "unknown op: " + req.Op})
 	}
@@ -134,6 +196,79 @@ func (d *daemon) handleIPC(conn net.Conn) {
 func writeIPC(conn net.Conn, resp ipcResponse) {
 	b, _ := json.Marshal(resp)
 	_, _ = conn.Write(append(b, '\n'))
+}
+
+// maxReadDownloads caps how many media files one read fetches, so a snapshot of
+// a media-heavy chat can't trigger an unbounded run of blocking downloads.
+const maxReadDownloads = 8
+
+// maxIPCReadCount caps how many messages one read op pulls, so an over-eager
+// `tg chat --read N` (e.g. an agent reading a huge unread thread) can't blow up
+// the daemon's memory/time paging an entire conversation.
+const maxIPCReadCount = 200
+
+// downloadMessageMedia downloads a message's attachment (if any) and returns its
+// local path within TDLib's cache, or "" when there's nothing to fetch / it failed.
+func (d *daemon) downloadMessageMedia(m tdlib.Message) string {
+	f, _, _, ok := m.Content.MediaFile()
+	if !ok || f.ID == 0 {
+		return ""
+	}
+	if f.Local.IsDownloadingCompleted && f.Local.Path != "" {
+		return f.Local.Path
+	}
+	path, err := tdlib.DownloadFile(d.tdjson, d.clientID, f.ID, 90*time.Second)
+	if err != nil {
+		return ""
+	}
+	return path
+}
+
+// buildIPCMessage renders a history message into the wire shape the CLI prints,
+// resolving the sender's display name (users via the daemon's shared name cache,
+// chats via the per-request titleCache) and the media kind/label. When download
+// is set, an attachment is fetched and its local path included.
+func (d *daemon) buildIPCMessage(m tdlib.Message, titleCache map[int64]string, download bool) IPCMessage {
+	sender := "unknown"
+	switch m.SenderID.Type {
+	case "messageSenderUser":
+		sender = d.senderName(m.SenderID.UserID)
+	case "messageSenderChat":
+		cid := m.SenderID.ChatID
+		if cached, ok := titleCache[cid]; ok && cached != "" {
+			sender = cached
+		} else if title, err := tdlib.FetchChatTitle(d.tdjson, d.clientID, cid); err == nil && title != "" {
+			titleCache[cid] = title
+			sender = title
+		} else {
+			sender = fmt.Sprintf("chat:%d", cid)
+		}
+	}
+
+	kind := "text"
+	if m.Content.Type != "messageText" {
+		if _, _, label, isMedia := m.Content.MediaFile(); isMedia {
+			kind = label
+		} else {
+			kind = strings.TrimPrefix(m.Content.Type, "message")
+		}
+	}
+
+	file := ""
+	if download && kind != "text" {
+		file = d.downloadMessageMedia(m)
+	}
+
+	return IPCMessage{
+		MessageID: m.ID,
+		ChatID:    m.ChatID,
+		Date:      m.Date,
+		Outgoing:  m.IsOutgoing,
+		Sender:    sender,
+		Kind:      kind,
+		Text:      m.Content.CaptionOrText(),
+		File:      file,
+	}
 }
 
 // resolveChat turns "@username" or a numeric id into a chat id (and user id).

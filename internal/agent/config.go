@@ -129,6 +129,35 @@ func configDir() (string, error) {
 	return config.DefaultAppDir()
 }
 
+// stagingDirName is the per-agent scratch dir the sandboxed triage/chat agent
+// can write to (e.g. to produce a screenshot) before SENDFILE-ing it.
+const stagingDirName = "agent-staging"
+
+// ensureStagingDir returns (creating if needed) the writable scratch dir handed
+// to interactive triage/chat agents as their working directory.
+func ensureStagingDir() (string, error) {
+	dir, err := configDir()
+	if err != nil {
+		return "", err
+	}
+	p := filepath.Join(dir, stagingDirName)
+	if err := os.MkdirAll(p, 0o700); err != nil {
+		return "", err
+	}
+	return p, nil
+}
+
+// markConfigUnauthorized flips config.json's auth_state to unauthorized (e.g.
+// after a remote logout) while preserving the other fields. Best-effort.
+func markConfigUnauthorized() {
+	cfg, path, err := config.LoadOrCreate()
+	if err != nil {
+		return
+	}
+	cfg.AuthState = config.AuthStateUnauthorized
+	_ = config.Save(cfg, path)
+}
+
 // LoadOrSeedLocations reads agent-locations.json, creating a placeholder file on
 // first run so the user has something to edit.
 func LoadOrSeedLocations() (Locations, string, error) {

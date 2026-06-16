@@ -15,6 +15,33 @@ import (
 // user's session forever.
 const claudeRunTimeout = 20 * time.Minute
 
+// Caps on captured agent output so a runaway/looping CLI can't grow the
+// long-lived daemon's memory without bound.
+const (
+	maxAgentStdout = 16 << 20 // 16 MiB
+	maxAgentStderr = 1 << 20  // 1 MiB
+)
+
+// boundedBuffer collects up to max bytes and silently discards the rest, while
+// reporting full writes so the child process never blocks or sees EPIPE.
+type boundedBuffer struct {
+	b   strings.Builder
+	max int
+}
+
+func (w *boundedBuffer) Write(p []byte) (int, error) {
+	if room := w.max - w.b.Len(); room > 0 {
+		if room < len(p) {
+			w.b.Write(p[:room])
+		} else {
+			w.b.Write(p)
+		}
+	}
+	return len(p), nil
+}
+
+func (w *boundedBuffer) String() string { return w.b.String() }
+
 // Backend selects which agent CLI drives a session.
 type Backend string
 
@@ -50,12 +77,14 @@ var (
 	codexBin  = agentBin("codex")
 )
 
-// RunAgent runs one turn with the chosen backend.
-func RunAgent(backend Backend, dir, prompt, resumeID string, role Role) (RunResult, error) {
+// RunAgent runs one turn with the chosen backend. When stagingWritable is set,
+// the (otherwise read-only) sandboxed agent gets dir as a writable scratch space
+// — still no network — so it can produce files to SENDFILE.
+func RunAgent(backend Backend, dir, prompt, resumeID string, role Role, stagingWritable bool) (RunResult, error) {
 	if backend.normalize() == BackendCodex {
-		return RunCodex(dir, prompt, resumeID, role)
+		return RunCodex(dir, prompt, resumeID, role, stagingWritable)
 	}
-	return RunClaude(dir, prompt, resumeID, role)
+	return RunClaude(dir, prompt, resumeID, role, stagingWritable)
 }
 
 // RunResult is the outcome of one Claude turn.
@@ -90,12 +119,18 @@ func permissionArgs(role Role) []string {
 // RunClaude runs one Claude turn in dir. If resumeID is set it continues that
 // session; otherwise it starts a new one. It returns the reply text and the
 // session id (new or unchanged) for follow-up turns.
-func RunClaude(dir, prompt, resumeID string, role Role) (RunResult, error) {
+func RunClaude(dir, prompt, resumeID string, role Role, stagingWritable bool) (RunResult, error) {
 	args := []string{"-p", "--output-format", "json"}
 	if resumeID != "" {
 		args = append(args, "--resume", resumeID)
 	}
-	args = append(args, permissionArgs(role)...)
+	if stagingWritable {
+		// Let the read-role agent write to its staging dir; claude plan mode would
+		// otherwise block file creation.
+		args = append(args, "--permission-mode", "acceptEdits")
+	} else {
+		args = append(args, permissionArgs(role)...)
+	}
 	// "--" so a prompt starting with "-" isn't parsed as a CLI option.
 	args = append(args, "--", prompt)
 
@@ -104,11 +139,13 @@ func RunClaude(dir, prompt, resumeID string, role Role) (RunResult, error) {
 
 	cmd := exec.CommandContext(ctx, claudeBin, args...)
 	cmd.Dir = dir
-	cmd.Stdin = nil // don't let claude wait on stdin
+	cmd.Stdin = nil    // don't let claude wait on stdin
+	hardenProcess(cmd) // kill the whole child group on timeout (claude spawns MCP/node)
 
-	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	stdout := &boundedBuffer{max: maxAgentStdout}
+	stderr := &boundedBuffer{max: maxAgentStderr}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 
 	err := cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {

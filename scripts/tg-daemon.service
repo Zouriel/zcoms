@@ -2,6 +2,10 @@
 Description=TgCli agent bridge (tg init agent)
 After=network-online.target
 Wants=network-online.target
+# If the optional WhatsApp sidecar is enabled, start it first so its socket
+# exists before triage runs. Harmless when wa-bridge.service isn't installed.
+After=wa-bridge.service
+Wants=wa-bridge.service
 
 [Service]
 Type=simple

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"tg/internal/agent"
+	"tg/internal/authentication"
 	"tg/internal/tdlib"
 
 	"github.com/spf13/cobra"
@@ -63,6 +64,11 @@ func init() {
 			self, err := tdlib.FetchCurrentUser(tdjson, clientID)
 			if err == nil {
 				fmt.Println("Running as:", self.FirstName, self.LastName)
+				// Record identity + auth_state so config.json reflects the live
+				// session (the daemon owns TDLib, so `tg auth` can't run to do it).
+				if updated, perr := authentication.PersistIdentity(AppConfig, ConfigFilePath, self); perr == nil {
+					AppConfig = updated
+				}
 			}
 
 			return agent.RunDaemon(tdjson, clientID, locations, allow, settings, agents)

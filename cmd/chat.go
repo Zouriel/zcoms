@@ -48,7 +48,25 @@ func init() {
 			// Route through the daemon when it's running (it owns the session).
 			if agent.DaemonRunning() {
 				if readCount > 0 {
-					return fmt.Errorf("`chat --read` isn't available while the tg daemon is running; stop it with `systemctl --user stop tg-daemon`")
+					handled, msgs, err := agent.DaemonRead(target, readCount, download)
+					if handled {
+						if err != nil {
+							return err
+						}
+						for _, m := range msgs {
+							emitChatMessage(chatMessage{
+								MessageID: m.MessageID,
+								ChatID:    m.ChatID,
+								Date:      m.Date,
+								Outgoing:  m.Outgoing,
+								Sender:    m.Sender,
+								Kind:      m.Kind,
+								Text:      m.Text,
+								FilePath:  m.File,
+							}, jsonOutput)
+						}
+						return nil
+					}
 				}
 				if message != "" && !waitForReply {
 					handled, _, _, err := agent.DaemonSend(target, message)
@@ -91,9 +109,10 @@ func init() {
 			nameCache := map[int64]string{}
 			titleCache := map[int64]string{}
 
-			// Snapshot mode: print the last N messages and exit.
+			// Snapshot mode: print the last N messages and exit, without opening
+			// the chat (no read receipts) — matches the daemon-routed read path.
 			if readCount > 0 {
-				history, err := tdlib.FetchChatHistory(tdjson, clientID, chatID, readCount)
+				history, err := tdlib.FetchChatHistorySnapshot(tdjson, clientID, chatID, readCount)
 				if err != nil {
 					return err
 				}

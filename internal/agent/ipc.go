@@ -26,19 +26,42 @@ func SocketPath() (string, error) {
 }
 
 type ipcRequest struct {
-	Op   string `json:"op"`             // "send" | "ask" | "sendfile"
-	To   string `json:"to"`             // @username or numeric chat id
-	Text string `json:"text"`           // message body / question / caption
-	Path string `json:"path,omitempty"` // local file path (sendfile)
+	Op       string `json:"op"`                 // "send" | "ask" | "sendfile" | "read" | "errand_*"
+	To       string `json:"to"`                 // @username or numeric chat id / errand target
+	Text     string `json:"text"`               // message body / question / caption
+	Path     string `json:"path,omitempty"`     // local file path (sendfile)
+	Count    int    `json:"count,omitempty"`    // number of history messages (read)
+	Download bool   `json:"download,omitempty"` // download media in a read
+
+	// Errand ops.
+	Brief     string `json:"brief,omitempty"`      // what to ask / produce (errand_start)
+	Deliver   bool   `json:"deliver,omitempty"`    // also send the deliverable to the contact
+	AutoStart bool   `json:"auto_start,omitempty"` // skip the approval step (errand_start)
+	ID        string `json:"id,omitempty"`         // errand id (errand_cancel)
+}
+
+// IPCMessage is one history message returned by the daemon's "read" op. It
+// mirrors the fields `tg chat` prints so the CLI can render it identically
+// whether the daemon answered or it talked to Telegram directly.
+type IPCMessage struct {
+	MessageID int64  `json:"message_id"`
+	ChatID    int64  `json:"chat_id"`
+	Date      int64  `json:"date"`
+	Outgoing  bool   `json:"outgoing"`
+	Sender    string `json:"sender"`
+	Kind      string `json:"kind"`
+	Text      string `json:"text"`
+	File      string `json:"file,omitempty"` // local path if media was downloaded
 }
 
 type ipcResponse struct {
-	OK        bool   `json:"ok"`
-	MessageID int64  `json:"message_id,omitempty"`
-	ChatID    int64  `json:"chat_id,omitempty"`
-	Reply     string `json:"reply,omitempty"`
-	Label     string `json:"label,omitempty"`
-	Error     string `json:"error,omitempty"`
+	OK        bool         `json:"ok"`
+	MessageID int64        `json:"message_id,omitempty"`
+	ChatID    int64        `json:"chat_id,omitempty"`
+	Reply     string       `json:"reply,omitempty"`
+	Label     string       `json:"label,omitempty"`
+	Messages  []IPCMessage `json:"messages,omitempty"`
+	Error     string       `json:"error,omitempty"`
 }
 
 func dialDaemon() (net.Conn, bool) {
@@ -116,11 +139,46 @@ func DaemonChatWait(to, text string, timeout time.Duration) (handled bool, reply
 	return handled, resp.Reply, err
 }
 
+// DaemonRead fetches the last `count` history messages of a chat through a
+// running daemon (which owns the single Telegram session). handled is false when
+// no daemon is listening, so the caller can read directly instead.
+func DaemonRead(to string, count int, download bool) (handled bool, msgs []IPCMessage, err error) {
+	deadline := time.Now().Add(60 * time.Second)
+	if download {
+		deadline = time.Now().Add(5 * time.Minute) // media downloads can take a while
+	}
+	resp, handled, err := roundTrip(ipcRequest{Op: "read", To: to, Count: count, Download: download}, deadline)
+	return handled, resp.Messages, err
+}
+
 // DaemonSendFile sends a local file through a running daemon and waits for the
 // upload to finish. handled is false when no daemon is listening.
 func DaemonSendFile(to, path, caption string) (handled bool, label string, chatID int64, err error) {
 	resp, handled, err := roundTrip(ipcRequest{Op: "sendfile", To: to, Path: path, Text: caption}, time.Now().Add(31*time.Minute))
 	return handled, resp.Label, resp.ChatID, err
+}
+
+// DaemonErrandStart dispatches an errand through a running daemon (which owns
+// the Telegram session and drives the errand). handled is false when no daemon
+// is listening — errands only exist inside the daemon, so the caller should say
+// so rather than fall back.
+func DaemonErrandStart(target, brief string, deliver, autoStart bool) (handled bool, reply string, err error) {
+	resp, handled, err := roundTrip(ipcRequest{
+		Op: "errand_start", To: target, Brief: brief, Deliver: deliver, AutoStart: autoStart,
+	}, time.Now().Add(30*time.Second))
+	return handled, resp.Reply, err
+}
+
+// DaemonErrandList lists active errands through a running daemon.
+func DaemonErrandList() (handled bool, reply string, err error) {
+	resp, handled, err := roundTrip(ipcRequest{Op: "errand_list"}, time.Now().Add(10*time.Second))
+	return handled, resp.Reply, err
+}
+
+// DaemonErrandCancel cancels an errand by id through a running daemon.
+func DaemonErrandCancel(id string) (handled bool, reply string, err error) {
+	resp, handled, err := roundTrip(ipcRequest{Op: "errand_cancel", ID: id}, time.Now().Add(10*time.Second))
+	return handled, resp.Reply, err
 }
 
 // DaemonRunning reports whether a bridge daemon is listening on the socket.
