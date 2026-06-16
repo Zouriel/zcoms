@@ -37,6 +37,9 @@ type ipcRequest struct {
 	ChatID     int64   `json:"chat_id,omitempty"`
 	MessageIDs []int64 `json:"message_ids,omitempty"`
 
+	// subscribe: which event stream ("bridge" | "errands").
+	Role string `json:"role,omitempty"`
+
 	// Errand ops.
 	Brief     string `json:"brief,omitempty"`      // what to ask / produce (errand_start)
 	Deliver   bool   `json:"deliver,omitempty"`    // also send the deliverable to the contact
@@ -67,6 +70,20 @@ type UnreadItem struct {
 	When   int64  `json:"when"` // unix seconds
 	ChatID int64  `json:"chat_id"`
 	MsgID  int64  `json:"msg_id"`
+}
+
+// ipcEvent is one pushed incoming-message event on a subscribe stream.
+// JSON-compatible with zcoms-sdk/ipc.Event.
+type ipcEvent struct {
+	Event     string `json:"event"` // "message"
+	ChatID    int64  `json:"chat_id"`
+	UserID    int64  `json:"user_id"`
+	Sender    string `json:"sender"`
+	Text      string `json:"text"`
+	Kind      string `json:"kind"`
+	File      string `json:"file,omitempty"`
+	MessageID int64  `json:"message_id"`
+	Date      int64  `json:"date"`
 }
 
 type ipcResponse struct {

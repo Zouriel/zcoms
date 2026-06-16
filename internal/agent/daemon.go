@@ -77,6 +77,12 @@ type daemon struct {
 	// triageMu serializes use of the persistent triage-brain session so the
 	// scheduled pass and an `interact triage` turn never drive it concurrently.
 	triageMu sync.Mutex
+
+	// subscribers receive pushed incoming-message events by role
+	// ("bridge"|"errands") so external components can react without owning the
+	// Telegram session. Guarded by subMu.
+	subMu       sync.Mutex
+	subscribers map[string][]chan ipcEvent
 }
 
 // RunDaemon resolves the allow-list, greets each member, then services incoming
@@ -96,6 +102,7 @@ func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow 
 		lastAutoReply:  map[int64]time.Time{},
 		nameCache:      map[int64]string{},
 		errands:        map[string]*Errand{},
+		subscribers:    map[string][]chan ipcEvent{},
 	}
 
 	// Gate optional capabilities by what's installed (components registry).

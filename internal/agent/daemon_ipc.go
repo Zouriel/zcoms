@@ -199,6 +199,10 @@ func (d *daemon) handleIPC(conn net.Conn) {
 		}
 		writeIPC(conn, ipcResponse{OK: true, ChatID: req.ChatID})
 
+	case "subscribe":
+		d.serveSubscription(conn, req.Role)
+		return
+
 	case "errand_start":
 		msg, err := d.startErrand(ErrandSpec{
 			Target: req.To, Brief: req.Brief, DeliverToTarget: req.Deliver, AutoStart: req.AutoStart,
