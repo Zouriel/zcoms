@@ -260,7 +260,7 @@ func (d *daemon) errandStatus(e *Errand) string {
 // runInterviewTurn runs one interviewer turn (plan mode — no filesystem/shell)
 // and acts on its directives. Returns true when the interviewer hands off.
 func (d *daemon) runInterviewTurn(e *Errand, prompt string) (handoff bool) {
-	backend := d.agents.For("", "")
+	backend := d.agents.For("errands", "")
 	if backend == "" {
 		d.send(e.OwnerChat, fmt.Sprintf("⚠️ Errand %s can't run — no agent CLI (claude/codex) is installed.", e.ID))
 		d.setErrandStatus(e, ErrandFailed)
@@ -393,7 +393,7 @@ func extractRecordBlock(text string) string {
 // runWorkerTurn runs one producer turn (write access to its scratch dir) and
 // acts on its directives. Returns true when the errand is finished.
 func (d *daemon) runWorkerTurn(e *Errand, prompt string) (done bool) {
-	backend := d.agents.For("", "")
+	backend := d.agents.For("errands", "")
 	staging, err := errandStagingDir(e.ID)
 	if err != nil {
 		d.send(e.OwnerChat, fmt.Sprintf("⚠️ Errand %s — couldn't open the working dir: %v", e.ID, err))

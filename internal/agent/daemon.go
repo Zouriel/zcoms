@@ -8,10 +8,18 @@ import (
 	"sync"
 	"time"
 
+	"zcoms/internal/components"
 	"zcoms/internal/tdlib"
 )
 
 const telegramMaxLen = 4000
+
+func onOff(b bool) string {
+	if b {
+		return "on"
+	}
+	return "off"
+}
 
 // userState tracks one allow-listed user's place in the bridge.
 type userState struct {
@@ -48,9 +56,16 @@ type daemon struct {
 	settings  Settings
 	agents    AgentConfig
 
-	mainChatID    int64   // where triage digests are sent
-	mainUserID    int64   // the owner — never auto-replied to or triaged
-	triageBackend Backend // resolved backend for the triage task
+	mainChatID     int64   // where triage digests are sent
+	mainUserID     int64   // the owner — never auto-replied to or triaged
+	bridgeBackend  Backend // resolved backend for interactive bridge / chat sessions
+	triageBackend  Backend // resolved backend for the triage task
+	errandsBackend Backend // resolved backend for errand interviewer/producer agents
+
+	// installed gates which daemon capabilities run (triage / errands), set from
+	// the components registry at startup.
+	triageInstalled  bool
+	errandsInstalled bool
 
 	mu            sync.Mutex
 	byUser        map[int64]*userState    // resolved user id -> state
@@ -68,23 +83,33 @@ type daemon struct {
 // messages until interrupted.
 func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow Allowlist, settings Settings, agents AgentConfig) error {
 	d := &daemon{
-		tdjson:        tdjson,
-		clientID:      clientID,
-		locations:     locations,
-		settings:      settings,
-		agents:        agents,
-		triageBackend: agents.For("triage", ""),
-		byUser:        map[int64]*userState{},
-		pendingAsk:    map[int64][]chan string{},
-		lastAutoReply: map[int64]time.Time{},
-		nameCache:     map[int64]string{},
-		errands:       map[string]*Errand{},
+		tdjson:         tdjson,
+		clientID:       clientID,
+		locations:      locations,
+		settings:       settings,
+		agents:         agents,
+		bridgeBackend:  agents.For("bridge", ""),
+		triageBackend:  agents.For("triage", ""),
+		errandsBackend: agents.For("errands", ""),
+		byUser:         map[int64]*userState{},
+		pendingAsk:     map[int64][]chan string{},
+		lastAutoReply:  map[int64]time.Time{},
+		nameCache:      map[int64]string{},
+		errands:        map[string]*Errand{},
+	}
+
+	// Gate optional capabilities by what's installed (components registry).
+	if state, err := components.Load(); err == nil {
+		d.triageInstalled = state.IsInstalled(components.Triage)
+		d.errandsInstalled = state.IsInstalled(components.Errands)
 	}
 
 	// Reload any errands persisted before a restart so they keep running.
-	if saved, err := LoadErrands(); err == nil {
-		for _, e := range saved {
-			d.errands[e.ID] = e
+	if d.errandsInstalled {
+		if saved, err := LoadErrands(); err == nil {
+			for _, e := range saved {
+				d.errands[e.ID] = e
+			}
 		}
 	}
 
@@ -115,7 +140,7 @@ func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow 
 		if err != nil {
 			chatID = userID // private chat id == user id in TDLib
 		}
-		backend := agents.For("", entry.Agent)
+		backend := agents.For("bridge", entry.Agent)
 		d.byUser[userID] = &userState{username: username, entry: entry, chatID: chatID, backend: backend}
 		resolved++
 		fmt.Printf("  • %s -> user %d (role=%s, agent=%s)\n", username, userID, entry.Role, backend)
@@ -127,6 +152,7 @@ func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow 
 	}
 
 	fmt.Printf("Daemon running. %d user(s) allow-listed. Listening...\n", resolved)
+	fmt.Printf("components: bridge=on triage=%s errands=%s\n", onOff(d.triageInstalled), onOff(d.errandsInstalled))
 	fmt.Println("⚠️  SECURITY: allow-listed users can drive an AI agent on this machine.")
 	fmt.Println("    Roles limit WRITES, not reads — 'read' can still exfiltrate any file this user can")
 	fmt.Println("    open, and locations don't sandbox the agent. Keep the allowlist tiny and enable")
@@ -135,7 +161,7 @@ func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow 
 	if DefaultAgent() == "" {
 		fmt.Println("⚠️  No agent CLI (claude/codex) found — bridge sessions and triage are unavailable (auto-reply still works).")
 	} else {
-		fmt.Printf("agents: available=%v, bridge-default=%s, triage=%s\n", AvailableAgents(), agents.For("", ""), d.triageBackend)
+		fmt.Printf("agents: available=%v, bridge=%s, triage=%s, errands=%s\n", AvailableAgents(), d.bridgeBackend, d.triageBackend, d.errandsBackend)
 	}
 
 	if settings.AutoReplyEnabled {
@@ -144,8 +170,12 @@ func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow 
 	if settings.Triage.Enabled && d.mainChatID == 0 {
 		fmt.Println("  ! triage enabled but main_user not resolved — digests have nowhere to go")
 	}
-	go d.runTriageLoop() // always on; it honors the enabled flag (re-read each cycle)
-	go d.runErrandLoop() // advances WhatsApp errands (no push) and resumes errands after a restart
+	if d.triageInstalled {
+		go d.runTriageLoop() // honors the enabled flag (re-read each cycle)
+	}
+	if d.errandsInstalled {
+		go d.runErrandLoop() // advances WhatsApp errands (no push) and resumes errands after a restart
+	}
 
 	for {
 		updateJSON, err := tdlib.ReceiveUpdates(tdjson)
@@ -452,8 +482,8 @@ func (d *daemon) selectNumber(st *userState, n int) {
 }
 
 // startChat puts the user in a full-power, general-purpose agent session: their
-// allow-listed role (full for the owner) in their home directory, pinned to the
-// codex backend (same as triage). Unlike `interact triage`, it is a normal agent
+// allow-listed role (full for the owner) in their home directory, on the bridge
+// session-type agent (`zc agents set bridge`). Unlike `interact triage`, it is a normal agent
 // session with no directive protocol — it can create/edit files, run commands,
 // SSH into servers, etc. A context seed (first turn) tells it the owner's
 // Telegram/WhatsApp are already wired through this tool. Resumes until `new`/`end`.
@@ -466,7 +496,7 @@ func (d *daemon) startChat(st *userState) {
 	st.location, st.locationPath, st.effectiveRole = "chat", home, st.entry.Role
 	st.sessionID, st.pendingKind, st.awaitingConfirm = "", "", false
 	st.triageReply, st.triageSession, st.triageRecipients = false, false, nil
-	st.forceBackend = d.triageBackend // pin codex (falls back to default if unset)
+	st.forceBackend = d.bridgeBackend // chat is a bridge session — use the bridge agent
 	st.triageSeed = buildChatSeed()
 	role := st.effectiveRole
 	d.mu.Unlock()

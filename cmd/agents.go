@@ -12,9 +12,9 @@ import (
 func init() {
 	agentsCommand := &cobra.Command{
 		Use:   "agents",
-		Short: "Show or set which agent (claude/codex) handles which task",
-		Long: "Shows installed agents and the configured default + per-task overrides\n" +
-			"(edit agents.json directly, or use `zc agents set <task> <agent>`).",
+		Short: "Show or set which agent (claude/codex) handles which session type",
+		Long: "Shows installed agents and the configured default + the agent per session\n" +
+			"type — bridge, triage, errands (edit agents.json, or use `zc agents set`).",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, path, err := agent.LoadOrSeedAgents()
 			if err != nil {
@@ -33,13 +33,10 @@ func init() {
 				fmt.Println(strings.Join(parts, ", "))
 			}
 
-			fmt.Printf("Default (bridge work): %s\n", cfg.For("", ""))
-			fmt.Println("Per-task:")
-			fmt.Printf("  triage -> %s\n", cfg.For("triage", ""))
-			for task := range cfg.Tasks {
-				if task != "triage" {
-					fmt.Printf("  %s -> %s\n", task, cfg.For(task, ""))
-				}
+			fmt.Printf("Default:  %s\n", cfg.For("", ""))
+			fmt.Println("Per session type:")
+			for _, t := range agent.SessionTypes {
+				fmt.Printf("  %-8s -> %s\n", t, cfg.For(t, ""))
 			}
 			fmt.Println("Config:", path)
 			return nil
@@ -47,13 +44,16 @@ func init() {
 	}
 
 	setCommand := &cobra.Command{
-		Use:   "set <task|default> <claude|codex>",
-		Short: "Assign an agent to a task (task names: default, triage)",
+		Use:   "set <bridge|triage|errands|default> <claude|codex>",
+		Short: "Assign an agent to a session type (bridge, triage, errands) or the default",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			task := strings.ToLower(strings.TrimSpace(args[0]))
 			backend := agent.Backend(strings.ToLower(strings.TrimSpace(args[1])))
 
+			if task != "default" && task != "" && !agent.IsSessionType(task) {
+				return fmt.Errorf("unknown session type %q; use one of: %s (or default)", task, strings.Join(agent.SessionTypes, ", "))
+			}
 			if backend != agent.BackendClaude && backend != agent.BackendCodex {
 				return fmt.Errorf("agent must be 'claude' or 'codex'")
 			}
