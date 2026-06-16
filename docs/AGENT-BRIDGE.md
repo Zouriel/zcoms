@@ -1,5 +1,10 @@
 # Agent bridge (`zc init agent`)
 
+> **Install it first:** `zc install bridge`. The bridge is an opt-in component (so is
+> `triage` and `errands` — `zc install triage` / `zc install errands`); installing one
+> seeds its config, sets up the `zcoms-daemon` service, and restarts it. Each session
+> type has its own agent backend — `zc agents set <bridge|triage|errands> <claude|codex>`.
+
 `zc init agent` turns the logged-in Telegram account into a two-way bridge: allow-listed
 users message the account and drive an **AI agent** (Claude Code or Codex) on this machine
 (pick a project, resume a past session with a summary, chat back and forth), while your own

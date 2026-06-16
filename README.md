@@ -113,15 +113,47 @@ Authenticate once with your phone number. The session is persisted locally — y
 | `zc tg chat <@username\|chat_id> [message]` | One round-trip: send and/or wait for the next reply (scriptable) |
 | `zc tg tail <@username\|chat_id>` | Follow a chat live; type to send, paste a path to send a file |
 | `zc tg chats` | List recent chats |
-| `zc init agent` | Run the agent bridge (drive Claude/Codex from Telegram) — see [Agent bridge](#agent-bridge--drive-claudecodex-from-telegram) |
-| `zc allowlist [add\|remove …]` | List/add/remove who may drive the agent bridge |
-| `zc agents [set <task> <agent>]` | Show/set which agent (claude/codex) handles which task |
-| `zc locations [add\|remove …]` | List/add/remove agent-bridge project locations |
-| `zc triage [30m\|1h\|…\|twice-daily\|on\|off]` | Show/set the incoming-message triage schedule |
-| `zc errand [start\|list\|cancel …]` | Dispatch/manage an agent that questions a contact and produces a deliverable |
 | `zc wa status` | Ping the optional WhatsApp sidecar (paired/connected) |
+| `zc install [bridge\|triage\|errands]` | Show component status, or install one (see [Components](#components)) |
+| `zc uninstall <component>` | Remove a component (and anything that depends on it) |
 
-The last three configure the optional **agent bridge** (below); the rest work standalone.
+The Telegram/WhatsApp commands above work standalone. The **agent features** are
+opt-in [components](#components) — once installed, these commands light up:
+
+| Command | Component | Description |
+|---|---|---|
+| `zc init agent` | bridge | Run the agent bridge (drive Claude/Codex from Telegram) — see [Agent bridge](#agent-bridge--drive-claudecodex-from-telegram) |
+| `zc allowlist [add\|remove …]` | bridge | List/add/remove who may drive the agent bridge |
+| `zc agents [set <type> <agent>]` | bridge | Show/set which agent (claude/codex) handles each session type (bridge/triage/errands) |
+| `zc locations [add\|remove …]` | bridge | List/add/remove agent-bridge project locations |
+| `zc triage [30m\|1h\|…\|twice-daily\|on\|off]` | triage | Show/set the incoming-message triage schedule |
+| `zc errand [start\|list\|cancel …]` | errands | Dispatch/manage an agent that questions a contact and produces a deliverable |
+
+Until a component is installed, its commands are hidden from `zc --help`; running
+one prints an install hint.
+
+## Components
+
+zcoms ships lean — just Telegram + WhatsApp comms. The agent features run inside a
+single long-running daemon (only one process can hold the Telegram session), so
+they're opt-in **components** you add with `zc install`:
+
+| Component | What it adds | Needs |
+|---|---|---|
+| `bridge` | Interactive agent sessions — locations, session management, `chat` | — |
+| `triage` | Scheduled AI digest of incoming Telegram/WhatsApp messages | bridge |
+| `errands` | Dispatch autonomous interviewer→producer agents to a contact | bridge |
+
+```sh
+zc install                 # show what's installed
+zc install triage          # installs triage (pulls in bridge automatically)
+zc agents set triage codex # pick the agent per session type
+zc uninstall errands       # remove a component
+```
+
+Installing a component seeds its config, enables/refreshes the `zcoms-daemon`
+service, and restarts it so the component is active immediately. `zc agents`
+configures a separate backend (claude/codex) per session type.
 
 ### Examples
 
@@ -236,12 +268,16 @@ fi
 
 ## Agent bridge — drive Claude/Codex from Telegram
 
+> Install it first: **`zc install bridge`** (triage and errands below are their own
+> components — `zc install triage` / `zc install errands`). See [Components](#components).
+
 `zc init agent` turns the logged-in account into a two-way bridge: **allow-listed users
 message it to drive an AI agent** (Claude Code or Codex) on the host — pick a project,
 resume a past session with an auto summary, and chat back and forth — with per-user,
-role-based permissions. It can also **auto-reply** to people who aren't on the allow-list
-and DM you an **AI-triaged digest** of the important ones. `zc tg send`/`ask`/`chat`/`send-file`
-keep working alongside it (they route through the daemon's socket).
+role-based permissions. With the **triage** component it can also **auto-reply** to people
+who aren't on the allow-list and DM you an **AI-triaged digest** of the important ones.
+`zc tg send`/`ask`/`chat`/`send-file` keep working alongside it (they route through the
+daemon's socket).
 
 > Full reference and the security model: **[docs/AGENT-BRIDGE.md](docs/AGENT-BRIDGE.md)**.
 
@@ -279,9 +315,10 @@ Four JSON files in the config dir (`~/.config/zcoms/`), all `0600`, auto-created
 }
 ```
 
-**`agents.json`** — which backend runs which task (also via `zc agents set`):
+**`agents.json`** — which backend runs each session type (also via
+`zc agents set <bridge|triage|errands> <claude|codex>`):
 ```json
-{ "default": "claude", "tasks": { "triage": "codex" } }
+{ "default": "claude", "tasks": { "bridge": "claude", "triage": "codex", "errands": "claude" } }
 ```
 
 **`agent-settings.json`** — auto-reply + triage (also via `zc triage`):
@@ -325,12 +362,13 @@ and it'll dispatch an errand for you.
 
 ### Run it as a service
 
+`zc install bridge` already sets up and starts the `zcoms-daemon` user service for you.
+To also start it on boot:
+
 ```sh
-cp zcoms-daemon.service ~/.config/systemd/user/    # edit WorkingDirectory if needed
-systemctl --user enable --now zcoms-daemon         # stays up, restarts on crash
 loginctl enable-linger "$USER"                  # start on boot without logging in
-# while it runs: `tail`/`chats`/`download`/`auth`/`login`/`logout` aren't available
-# (they need their own session) — stop the daemon to use them.
+# while the daemon runs: `zc tg tail`/`chats`/`download`/`auth`/`login`/`logout` aren't
+# available (they need their own session) — stop the daemon to use them.
 ```
 
 ### Auto-reply & triage of incoming messages
