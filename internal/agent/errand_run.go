@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	"tg/internal/tdlib"
-	"tg/internal/whatsapp"
+	"zcoms/internal/tdlib"
+	"zcoms/internal/whatsapp"
 )
 
 // errandDirective matches one content-bearing action line. Which directives are

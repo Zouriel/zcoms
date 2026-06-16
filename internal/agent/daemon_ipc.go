@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"tg/internal/tdlib"
+	"zcoms/internal/tdlib"
 )
 
-// serveIPC opens the Unix socket that `tg send`/`tg ask` connect to so they can
+// serveIPC opens the Unix socket that `zc tg send`/`zc tg ask` connect to so they can
 // reuse the daemon's single Telegram session instead of opening their own.
 func (d *daemon) serveIPC() error {
 	path, err := SocketPath()
@@ -138,7 +138,7 @@ func (d *daemon) handleIPC(conn net.Conn) {
 			writeIPC(conn, ipcResponse{Error: err.Error()})
 			return
 		}
-		// Empty text = `tg chat` "just listen" mode: don't send, only wait.
+		// Empty text = `zc tg chat` "just listen" mode: don't send, only wait.
 		if req.Text != "" {
 			if _, err := tdlib.SendTextMessage(d.tdjson, d.clientID, chatID, req.Text); err != nil {
 				writeIPC(conn, ipcResponse{Error: err.Error()})
@@ -203,7 +203,7 @@ func writeIPC(conn net.Conn, resp ipcResponse) {
 const maxReadDownloads = 8
 
 // maxIPCReadCount caps how many messages one read op pulls, so an over-eager
-// `tg chat --read N` (e.g. an agent reading a huge unread thread) can't blow up
+// `zc tg chat --read N` (e.g. an agent reading a huge unread thread) can't blow up
 // the daemon's memory/time paging an entire conversation.
 const maxIPCReadCount = 200
 
@@ -288,7 +288,7 @@ func (d *daemon) resolveChat(to string) (chatID, userID int64, err error) {
 	return cid, uid, nil
 }
 
-// resolvePendingAsk delivers text to the oldest outstanding `tg ask` for userID,
+// resolvePendingAsk delivers text to the oldest outstanding `zc tg ask` for userID,
 // returning true if one was waiting.
 func (d *daemon) resolvePendingAsk(userID int64, text string) bool {
 	d.mu.Lock()
@@ -317,7 +317,7 @@ func (d *daemon) removePending(userID int64, ch chan string) {
 	}
 }
 
-// replyText extracts a user's reply for `tg ask`, matching standalone behavior
+// replyText extracts a user's reply for `zc tg ask`, matching standalone behavior
 // (text, else caption, else a [type] tag for media).
 func replyText(c tdlib.Content) string {
 	if c.Type == "messageText" {

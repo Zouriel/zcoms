@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// TriageSchedules are the schedules `tg triage` accepts.
+// TriageSchedules are the schedules `zc triage` accepts.
 var TriageSchedules = []string{"30m", "1h", "2h", "3h", "6h", "12h", "twice-daily"}
 
 // TriageSettings configures the importance triage of inbound messages from

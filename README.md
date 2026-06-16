@@ -1,4 +1,4 @@
-# TgCli
+# zcoms
 
 A Telegram CLI built on [TDLib](https://github.com/tdlib/td) — send & receive messages and
 media, follow chats live, and ask questions that block until you get a reply, all from your
@@ -18,14 +18,14 @@ Works on **Windows** and **Linux**.
 Grab the bundle for your OS from [Releases](../../releases) — it ships with the
 required TDLib library inside, so there's nothing else to install:
 
-- **Windows** — `TgCli-win64.zip`: extract, then run `tg.exe` (or add the folder to your PATH).
-- **Linux (x86-64)** — `TgCli-linux-x64.tar.gz`:
+- **Windows** — `zcoms-win64.zip`: extract, then run `zc.exe` (or add the folder to your PATH).
+- **Linux (x86-64)** — `zcoms-linux-x64.tar.gz`:
   ```sh
-  tar xzf TgCli-linux-x64.tar.gz
-  cd TgCli-linux-x64
-  ./tg login
+  tar xzf zcoms-linux-x64.tar.gz
+  cd zcoms-linux-x64
+  ./zc tg login
   ```
-  `tg` loads the bundled `libtdjson.so` from its own folder, so just keep them together.
+  `zc` loads the bundled `libtdjson.so` from its own folder, so just keep them together.
 
   > The Linux bundle is **fully self-contained** — it ships `libtdjson.so` plus its own
   > OpenSSL (`libssl.so.1.1`/`libcrypto.so.1.1`), all built against an old baseline, so it
@@ -35,9 +35,9 @@ required TDLib library inside, so there's nothing else to install:
 ### Build from source
 
 ```sh
-git clone https://github.com/Zouriel/TgCli
-cd TgCli
-go build -o tg .
+git clone https://github.com/Zouriel/zcoms
+cd zcoms
+go build -o zc .
 ```
 
 #### Linux — TDLib dependency
@@ -53,12 +53,12 @@ sudo apt install libtdjson-dev
 sudo pacman -S tdlib
 ```
 
-Then place `libtdjson.so` next to the `tg` binary, or ensure it's in your library path.
+Then place `libtdjson.so` next to the `zc` binary, or ensure it's in your library path.
 
 ### Packaging a release
 
 - `scripts/build-linux-portable.sh` — builds the **portable** Linux bundle in an Ubuntu 20.04
-  container (TDLib + `tg` + bundled OpenSSL, old-glibc), producing `dist/TgCli-linux-x64.tar.gz`.
+  container (TDLib + `zc` + bundled OpenSSL, old-glibc), producing `dist/zcoms-linux-x64.tar.gz`.
   Requires Docker and a local Go toolchain.
 - `scripts/package.sh` — quick bundles from a locally available `libtdjson.so` (handy for
   Windows, or a Linux build that only needs to run on the build host).
@@ -86,13 +86,13 @@ TG_API_HASH = "your_api_hash"
 
 > **Tip:** If you're distributing a pre-built binary, embed credentials at build time so end users don't need to supply them:
 > ```sh
-> go build -ldflags "-X tg/internal/config.BuildAPIID=123456 -X tg/internal/config.BuildAPIHash=abc123"
+> go build -ldflags "-X zcoms/internal/config.BuildAPIID=123456 -X zcoms/internal/config.BuildAPIHash=abc123"
 > ```
 
 ### 3. Login
 
 ```sh
-tg login
+zc tg login
 ```
 
 Authenticate once with your phone number. The session is persisted locally — you won't need to log in again.
@@ -103,52 +103,52 @@ Authenticate once with your phone number. The session is persisted locally — y
 
 | Command | Description |
 |---|---|
-| `tg login` | Sign in to Telegram |
-| `tg logout [--hard]` | Sign out (`--hard` wipes the local session) |
-| `tg auth` | Show the currently logged-in account |
-| `tg send @username <message>` | Send a message to a user |
-| `tg send-file <@username\|chat_id> <path> [caption]` | Send a file (photo/video/audio/document) |
-| `tg download <@username\|chat_id>` | List recent received media and download a chosen one |
-| `tg ask @username <message>` | Send a message and **wait for their reply** |
-| `tg chat <@username\|chat_id> [message]` | One round-trip: send and/or wait for the next reply (scriptable) |
-| `tg tail <@username\|chat_id>` | Follow a chat live; type to send, paste a path to send a file |
-| `tg chats` | List recent chats |
-| `tg init agent` | Run the agent bridge (drive Claude/Codex from Telegram) — see [Agent bridge](#agent-bridge--drive-claudecodex-from-telegram) |
-| `tg allowlist [add\|remove …]` | List/add/remove who may drive the agent bridge |
-| `tg agents [set <task> <agent>]` | Show/set which agent (claude/codex) handles which task |
-| `tg locations [add\|remove …]` | List/add/remove agent-bridge project locations |
-| `tg triage [30m\|1h\|…\|twice-daily\|on\|off]` | Show/set the incoming-message triage schedule |
-| `tg errand [start\|list\|cancel …]` | Dispatch/manage an agent that questions a contact and produces a deliverable |
-| `tg wa status` | Ping the optional WhatsApp sidecar (paired/connected) |
+| `zc tg login` | Sign in to Telegram |
+| `zc tg logout [--hard]` | Sign out (`--hard` wipes the local session) |
+| `zc tg auth` | Show the currently logged-in account |
+| `zc tg send @username <message>` | Send a message to a user |
+| `zc tg send-file <@username\|chat_id> <path> [caption]` | Send a file (photo/video/audio/document) |
+| `zc tg download <@username\|chat_id>` | List recent received media and download a chosen one |
+| `zc tg ask @username <message>` | Send a message and **wait for their reply** |
+| `zc tg chat <@username\|chat_id> [message]` | One round-trip: send and/or wait for the next reply (scriptable) |
+| `zc tg tail <@username\|chat_id>` | Follow a chat live; type to send, paste a path to send a file |
+| `zc tg chats` | List recent chats |
+| `zc init agent` | Run the agent bridge (drive Claude/Codex from Telegram) — see [Agent bridge](#agent-bridge--drive-claudecodex-from-telegram) |
+| `zc allowlist [add\|remove …]` | List/add/remove who may drive the agent bridge |
+| `zc agents [set <task> <agent>]` | Show/set which agent (claude/codex) handles which task |
+| `zc locations [add\|remove …]` | List/add/remove agent-bridge project locations |
+| `zc triage [30m\|1h\|…\|twice-daily\|on\|off]` | Show/set the incoming-message triage schedule |
+| `zc errand [start\|list\|cancel …]` | Dispatch/manage an agent that questions a contact and produces a deliverable |
+| `zc wa status` | Ping the optional WhatsApp sidecar (paired/connected) |
 
 The last three configure the optional **agent bridge** (below); the rest work standalone.
 
 ### Examples
 
 ```sh
-tg send @alice "deploy finished successfully"
+zc tg send @alice "deploy finished successfully"
 
-tg send-file @alice ./report.pdf "here's the report"
+zc tg send-file @alice ./report.pdf "here's the report"
 
-tg ask @alice "should I use postgres or sqlite for this?" 
+zc tg ask @alice "should I use postgres or sqlite for this?" 
 # blocks until @alice replies, prints their answer
 
-tg tail @mygroup
+zc tg tail @mygroup
 ```
 
 ### Media
 
-Send a file from any chat by **pasting its path** while tailing, or with `tg send-file`.
+Send a file from any chat by **pasting its path** while tailing, or with `zc tg send-file`.
 The file type is chosen automatically from the extension — images go as photos, clips as
 videos, audio as audio, everything else as a document.
 
 Incoming media is **never downloaded automatically** — downloading an arbitrary file
 just because it arrived is a security risk. Instead, fetch media deliberately with
-`tg download`, which lists the most recent media in a chat (newest first) and lets you
+`zc tg download`, which lists the most recent media in a chat (newest first) and lets you
 pick one:
 
 ```sh
-tg download @alice
+zc tg download @alice
 # Recent media in "alice" (newest first):
 #   [0] photo     sunset.jpg  — look at this  (1.2 MB)
 #   [1] document  report.pdf  (340.0 KB)
@@ -158,7 +158,7 @@ tg download @alice
 Downloads land in a per-chat folder:
 
 ```
-~/Downloads/telegramcli/<chat name>/
+~/Downloads/zcoms/<chat name>/
 ```
 
 | Flag | Description |
@@ -169,24 +169,24 @@ Downloads land in a per-chat folder:
 
 ---
 
-## Scriptable back-and-forth: `tg chat`
+## Scriptable back-and-forth: `zc tg chat`
 
-`tail` is the interactive REPL. `tg chat` is its non-interactive counterpart — each
+`tail` is the interactive REPL. `zc tg chat` is its non-interactive counterpart — each
 invocation does **one round-trip and exits**, so it composes cleanly in scripts and
 agent loops (no long-lived process holding the session lock).
 
 ```sh
 # Send and wait for the reply (prints the reply to stdout)
-reply=$(tg chat @you "deploy to prod now or wait?")
+reply=$(zc tg chat @you "deploy to prod now or wait?")
 
 # Just wait for the next incoming message (let the other side start)
-tg chat @you
+zc tg chat @you
 
 # Catch up: snapshot the last 10 messages and exit
-tg chat @you --read 10
+zc tg chat @you --read 10
 
 # Structured output for programmatic use; bound the wait
-tg chat @you "still there?" --json --timeout 2m
+zc tg chat @you "still there?" --json --timeout 2m
 ```
 
 | Flag | Description |
@@ -198,23 +198,23 @@ tg chat @you "still there?" --json --timeout 2m
 | `--download` | Download media in the reply (off by default) |
 
 Media in replies is **not** downloaded by default. Pass `--download` to fetch it (only
-for trusted senders), or use `tg download` to pick a specific file. With `--download` +
+for trusted senders), or use `zc tg download` to pick a specific file. With `--download` +
 `--json`, the saved path comes back in the `file` field.
 
 ---
 
-## Using tg for programmatic notifications
+## Using zc for programmatic notifications
 
-`tg send` and `tg ask` are designed to be scripted. You can use them in CI, cron jobs, or AI agent workflows to stay in the loop when you're away from your desk.
+`zc tg send` and `zc tg ask` are designed to be scripted. You can use them in CI, cron jobs, or AI agent workflows to stay in the loop when you're away from your desk.
 
 **One-way notification:**
 ```sh
-tg send @you "build passed ✅"
+zc tg send @you "build passed ✅"
 ```
 
 **Ask a question and use the answer:**
 ```sh
-answer=$(tg ask @you "deploy to prod now or wait?")
+answer=$(zc tg ask @you "deploy to prod now or wait?")
 echo "User said: $answer"
 ```
 
@@ -223,11 +223,11 @@ echo "User said: $answer"
 #!/bin/bash
 run_tests
 if [ $? -eq 0 ]; then
-  tg send @you "tests passed — deploying"
+  zc tg send @you "tests passed — deploying"
   deploy
-  tg send @you "deployment done ✅"
+  zc tg send @you "deployment done ✅"
 else
-  choice=$(tg ask @you "tests failed — retry or abort?")
+  choice=$(zc tg ask @you "tests failed — retry or abort?")
   # act on $choice
 fi
 ```
@@ -236,11 +236,11 @@ fi
 
 ## Agent bridge — drive Claude/Codex from Telegram
 
-`tg init agent` turns the logged-in account into a two-way bridge: **allow-listed users
+`zc init agent` turns the logged-in account into a two-way bridge: **allow-listed users
 message it to drive an AI agent** (Claude Code or Codex) on the host — pick a project,
 resume a past session with an auto summary, and chat back and forth — with per-user,
 role-based permissions. It can also **auto-reply** to people who aren't on the allow-list
-and DM you an **AI-triaged digest** of the important ones. `tg send`/`ask`/`chat`/`send-file`
+and DM you an **AI-triaged digest** of the important ones. `zc tg send`/`ask`/`chat`/`send-file`
 keep working alongside it (they route through the daemon's socket).
 
 > Full reference and the security model: **[docs/AGENT-BRIDGE.md](docs/AGENT-BRIDGE.md)**.
@@ -248,21 +248,21 @@ keep working alongside it (they route through the daemon's socket).
 ### Prerequisites
 
 Install at least one agent CLI and log it in: [`claude`](https://code.claude.com) and/or
-[`codex`](https://developers.openai.com/codex/cli/). Check what `tg` sees:
+[`codex`](https://developers.openai.com/codex/cli/). Check what `zc` sees:
 
 ```sh
-tg agents          # Installed agents: claude, codex …
+zc agents          # Installed agents: claude, codex …
 ```
 
 If neither is installed, the bridge and triage are unavailable (auto-reply still works).
 
 ### Configuration
 
-Four JSON files in the config dir (`~/.config/tg/`), all `0600`, auto-created on first run:
+Four JSON files in the config dir (`~/.config/zcoms/`), all `0600`, auto-created on first run:
 
 **`agent-allowlist.json`** — who may drive it, their role, and (optionally) their agent
-(also via `tg allowlist add <@user> <role> [locations...] [--agent claude|codex]` /
-`tg allowlist remove <@user>`):
+(also via `zc allowlist add <@user> <role> [locations...] [--agent claude|codex]` /
+`zc allowlist remove <@user>`):
 ```json
 {
   "@you":      { "role": "full", "locations": ["*"], "agent": "claude" },
@@ -271,7 +271,7 @@ Four JSON files in the config dir (`~/.config/tg/`), all `0600`, auto-created on
 ```
 
 **`agent-locations.json`** — the projects, with an optional per-location ceiling (also via
-`tg locations add <name> <path> [max_role]` / `tg locations remove <name>`):
+`zc locations add <name> <path> [max_role]` / `zc locations remove <name>`):
 ```json
 {
   "App":  "/home/you/app",
@@ -279,19 +279,19 @@ Four JSON files in the config dir (`~/.config/tg/`), all `0600`, auto-created on
 }
 ```
 
-**`agents.json`** — which backend runs which task (also via `tg agents set`):
+**`agents.json`** — which backend runs which task (also via `zc agents set`):
 ```json
 { "default": "claude", "tasks": { "triage": "codex" } }
 ```
 
-**`agent-settings.json`** — auto-reply + triage (also via `tg triage`):
+**`agent-settings.json`** — auto-reply + triage (also via `zc triage`):
 ```json
 {
   "main_user": "@you",
   "auto_reply_enabled": true,
   "auto_reply": "Message received — the owner will be notified shortly.",
   "triage": { "enabled": true, "schedule": "1h", "dir": "/home/you" },
-  "whatsapp": { "enabled": false, "socket": "/home/you/.config/tg/wa.sock", "mark_read_on_reply": false }
+  "whatsapp": { "enabled": false, "socket": "/home/you/.config/zcoms/wa.sock", "mark_read_on_reply": false }
 }
 ```
 
@@ -326,8 +326,8 @@ and it'll dispatch an errand for you.
 ### Run it as a service
 
 ```sh
-cp tg-daemon.service ~/.config/systemd/user/    # edit WorkingDirectory if needed
-systemctl --user enable --now tg-daemon         # stays up, restarts on crash
+cp zcoms-daemon.service ~/.config/systemd/user/    # edit WorkingDirectory if needed
+systemctl --user enable --now zcoms-daemon         # stays up, restarts on crash
 loginctl enable-linger "$USER"                  # start on boot without logging in
 # while it runs: `tail`/`chats`/`download`/`auth`/`login`/`logout` aren't available
 # (they need their own session) — stop the daemon to use them.
@@ -343,19 +343,19 @@ For people **not** on the allow-list, the daemon can:
   unread state directly — so it catches messages received while the daemon was down, skips
   ones you've already read elsewhere, and marks the ones it processes as read.
 
-Change the schedule on the fly (no restart) with `tg triage`:
+Change the schedule on the fly (no restart) with `zc triage`:
 
 ```sh
-tg triage                # show current
-tg triage 30m            # or 1h, 2h, 3h, 6h, 12h
-tg triage twice-daily    # ~08:00 and ~22:00
-tg triage off            # / on
+zc triage                # show current
+zc triage 30m            # or 1h, 2h, 3h, 6h, 12h
+zc triage twice-daily    # ~08:00 and ~22:00
+zc triage off            # / on
 ```
 
 **WhatsApp (optional, off by default):** an unofficial [Baileys sidecar](whatsapp-bridge/README.md)
 lets triage merge unread WhatsApp 1:1s into the **same** digest, and the `interact triage`
 bridge command lets the agent reply to whoever wrote in — on WhatsApp or Telegram. Enable via
-the `whatsapp` block in `agent-settings.json`; check it with `tg wa status`. ⚠️ Baileys
+the `whatsapp` block in `agent-settings.json`; check it with `zc wa status`. ⚠️ Baileys
 violates WhatsApp's ToS (ban risk) — prefer a secondary number.
 
 ### Errands — send an agent to question a contact
@@ -366,10 +366,10 @@ what's needed for her CV, make it, send it to her, and ping me when done."* Kick
 plain language from a `chat` / `interact triage` session, or directly:
 
 ```sh
-tg errand start @alice "collect what's needed and draft a 1-page bio"
-tg errand start --deliver --go wa:9607XXXXXXX "make a CV and send it to her"
-tg errand list           # active errands
-tg errand cancel <id>    # stop one
+zc errand start @alice "collect what's needed and draft a 1-page bio"
+zc errand start --deliver --go wa:9607XXXXXXX "make a CV and send it to her"
+zc errand list           # active errands
+zc errand cancel <id>    # stop one
 ```
 
 - `--deliver` also sends the finished file to the contact; `--go` skips the approval step.
@@ -393,7 +393,7 @@ Details in [docs/AGENT-BRIDGE.md](docs/AGENT-BRIDGE.md).
 ## Use with Claude / AI agents
 
 There's a companion [**Claude Agent Skill**](https://github.com/Zouriel/tgcli-skill) that teaches
-Claude Code (and any agent supporting the skills standard) how to drive `tg` — so it can notify you,
+Claude Code (and any agent supporting the skills standard) how to drive `zc` — so it can notify you,
 ask a question and wait for your reply, converse, and send/receive files on its own:
 
 **→ [github.com/Zouriel/tgcli-skill](https://github.com/Zouriel/tgcli-skill)**

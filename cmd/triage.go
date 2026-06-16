@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"tg/internal/agent"
+	"zcoms/internal/agent"
 
 	"github.com/spf13/cobra"
 )
@@ -31,7 +31,7 @@ func init() {
 				fmt.Printf("Schedule: %s\n", s.Triage.Describe())
 				fmt.Printf("Dir:      %s\n", s.Triage.Dir)
 				fmt.Printf("Config:   %s\n", path)
-				fmt.Println("Set with: tg triage <" + strings.Join(agent.TriageSchedules, "|") + "|on|off>")
+				fmt.Println("Set with: zc triage <" + strings.Join(agent.TriageSchedules, "|") + "|on|off>")
 				return nil
 			}
 

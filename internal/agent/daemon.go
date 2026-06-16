@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"tg/internal/tdlib"
+	"zcoms/internal/tdlib"
 )
 
 const telegramMaxLen = 4000
@@ -29,7 +29,7 @@ type userState struct {
 	pendingKind     string    // "location" | "session" | ""
 	pendingLoc      []string  // location names awaiting numeric pick
 	pendingSess     []Session // sessions awaiting numeric pick
-	pendingFiles    []string  // files saved to tg-uploads/, to attach to the next turn
+	pendingFiles    []string  // files saved to zcoms-uploads/, to attach to the next turn
 	busy            bool      // an agent run is in flight
 	awaitingConfirm bool      // a plan is waiting for the user's yes/no (confirm role)
 
@@ -54,7 +54,7 @@ type daemon struct {
 
 	mu            sync.Mutex
 	byUser        map[int64]*userState    // resolved user id -> state
-	pendingAsk    map[int64][]chan string // user id -> queued `tg ask` waiters
+	pendingAsk    map[int64][]chan string // user id -> queued `zc tg ask` waiters
 	lastAutoReply map[int64]time.Time     // user id -> last auto-reply time
 	nameCache     map[int64]string        // user id -> display name
 	errands       map[string]*Errand      // errand id -> dispatched questioning task
@@ -89,7 +89,7 @@ func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow 
 	}
 
 	if err := d.serveIPC(); err != nil {
-		fmt.Printf("  ! IPC socket unavailable (tg send/ask won't route through daemon): %v\n", err)
+		fmt.Printf("  ! IPC socket unavailable (zc tg send/ask won't route through daemon): %v\n", err)
 	}
 
 	// Resolve the main user (for triage digests).
@@ -167,10 +167,10 @@ func (d *daemon) dispatchUpdate(updateJSON string) {
 
 	// If Telegram logs this session out remotely, keep config.json honest so the
 	// auth_state field doesn't stay "authorized" forever (the daemon can't run
-	// `tg logout`, which is what would normally reset it).
+	// `zc tg logout`, which is what would normally reset it).
 	if state, ok := tdlib.ParseUpdateAuthorizationState(updateJSON); ok {
 		if state == tdlib.AuthStateLoggingOut || state == tdlib.AuthStateClosed {
-			fmt.Printf("[bridge] ⚠️ Telegram session %s — marking config unauthorized; the daemon needs `tg login` (stop it first).\n", state)
+			fmt.Printf("[bridge] ⚠️ Telegram session %s — marking config unauthorized; the daemon needs `zc tg login` (stop it first).\n", state)
 			markConfigUnauthorized()
 		}
 		return
@@ -194,7 +194,7 @@ func (d *daemon) dispatchUpdate(updateJSON string) {
 		return
 	}
 
-	// A reply from anyone with an outstanding `tg ask` resolves it first,
+	// A reply from anyone with an outstanding `zc tg ask` resolves it first,
 	// taking precedence over bridge handling.
 	if d.resolvePendingAsk(u.Message.SenderID.UserID, replyText(u.Message.Content)) {
 		return
@@ -344,7 +344,7 @@ func (d *daemon) handle(st *userState, text string) {
 }
 
 func (d *daemon) listLocations(st *userState) {
-	// Reload so `tg locations add/remove` applies without a daemon restart.
+	// Reload so `zc locations add/remove` applies without a daemon restart.
 	if locs, _, err := LoadOrSeedLocations(); err == nil {
 		d.locations = locs
 	}
@@ -478,21 +478,21 @@ func (d *daemon) startChat(st *userState) {
 
 // buildChatSeed is prepended to the chat session's first turn so the agent knows
 // the owner's Telegram and WhatsApp are ALREADY connected through this tool and
-// can be reached with the `tg` CLI — instead of telling the owner to log in.
+// can be reached with the `zc` CLI — instead of telling the owner to log in.
 func buildChatSeed() string {
 	return strings.Join([]string{
-		"You are the owner's personal assistant, running on their own machine via the `tg`",
+		"You are the owner's personal assistant, running on their own machine via the `zc`",
 		"bridge with full shell access. Their Telegram AND WhatsApp are ALREADY logged in",
 		"through this tool — never tell them to log in, open WhatsApp Web, or scan a QR.",
-		"To reach their messages, use the `tg` CLI (it routes through the running daemon and",
+		"To reach their messages, use the `zc` CLI (it routes through the running daemon and",
 		"the paired WhatsApp sidecar, so no login is needed):",
-		"  • WhatsApp: `tg wa unread` (list unread) · `tg wa send <number|jid> <msg>` · `tg wa send-file <number|jid> <path>`",
-		"  • Telegram: `tg chat <@user|id> --read N` (history) · `tg send <@user|id> <msg>` · `tg send-file <@user|id> <path>`",
+		"  • WhatsApp: `zc wa unread` (list unread) · `zc wa send <number|jid> <msg>` · `zc wa send-file <number|jid> <path>`",
+		"  • Telegram: `zc tg chat <@user|id> --read N` (history) · `zc tg send <@user|id> <msg>` · `zc tg send-file <@user|id> <path>`",
 		"",
 		"ERRANDS — when the owner asks you to message someone, ask them a set of things, and/or",
 		"produce something from their answers (e.g. \"ask my wife what's needed for her CV, make it,",
 		"send it to her, and ping me when done\"), dispatch an errand instead of doing it inline:",
-		"  `tg errand start [deliver] [go] <@user|wa:NUMBER|#index> | <brief>`",
+		"  `zc errand start [deliver] [go] <@user|wa:NUMBER|#index> | <brief>`",
 		"    deliver = also send the finished file to the contact · go = skip the approval step and start now.",
 		"An errand runs in two sandboxed agents: an INTERVIEWER (no filesystem/shell — it only chats,",
 		"greeting the contact and asking ONE question at a time with a remaining count, recording answers",
@@ -500,7 +500,7 @@ func buildChatSeed() string {
 		"only the brief you gave, flags anything suspicious or mismatched, builds the deliverable, and",
 		"sends you the file(s) + a summary when done. Because the contact isn't the owner, write the brief",
 		"precisely — it's the only instruction the producer is allowed to act on. Manage with",
-		"`tg errand list` / `tg errand cancel <id>`. Prefer this for any \"go talk to X and come back with Y\"",
+		"`zc errand list` / `zc errand cancel <id>`. Prefer this for any \"go talk to X and come back with Y\"",
 		"task — don't try to hold the back-and-forth yourself.",
 		"For anything else, you have a normal shell — create/edit files, run commands, SSH, etc.",
 	}, "\n")

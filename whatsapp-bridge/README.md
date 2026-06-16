@@ -1,11 +1,11 @@
-# TgCli WhatsApp bridge (Baileys sidecar)
+# zcoms WhatsApp bridge (Baileys sidecar)
 
 A small standalone Node service that owns a WhatsApp Web (multi-device) session
-and exposes **unread / read / send** to the Go `tg` daemon over a Unix-domain
+and exposes **unread / read / send** to the Go `zc` daemon over a Unix-domain
 socket. With it running and enabled, triage digests and `interact triage` cover
 WhatsApp alongside Telegram.
 
-It is **optional and off by default** — if you never enable it, `tg` behaves
+It is **optional and off by default** — if you never enable it, `zc` behaves
 exactly as a Telegram-only build.
 
 ## ⚠️ ToS / ban risk — read this first
@@ -40,7 +40,7 @@ node index.js
 ```
 
 On your phone: **WhatsApp → Settings → Linked devices → Link a device**, then
-scan the QR. Auth is saved to `~/.config/tg/wa-auth/` so subsequent runs connect
+scan the QR. Auth is saved to `~/.config/zcoms/wa-auth/` so subsequent runs connect
 without a QR. (If you ever get "logged out", delete that folder and re-pair.)
 
 ## Run
@@ -49,13 +49,13 @@ without a QR. (If you ever get "logged out", delete that folder and re-pair.)
 node index.js
 ```
 
-It listens on the Unix socket (default `~/.config/tg/wa.sock`) and logs
+It listens on the Unix socket (default `~/.config/zcoms/wa.sock`) and logs
 connection drops/reconnects. Override paths with env vars:
 
 | Env       | Default                      | Meaning                       |
 |-----------|------------------------------|-------------------------------|
-| `WA_SOCK` | `~/.config/tg/wa.sock`       | Unix socket the daemon talks to |
-| `WA_AUTH` | `~/.config/tg/wa-auth`       | Baileys multi-device auth state |
+| `WA_SOCK` | `~/.config/zcoms/wa.sock`       | Unix socket the daemon talks to |
+| `WA_AUTH` | `~/.config/zcoms/wa-auth`       | Baileys multi-device auth state |
 | `WA_LOG`  | `info`                       | log level (`debug`/`info`/`warn`/`silent`) |
 
 ## Wire protocol
@@ -94,9 +94,9 @@ systemctl --user daemon-reload
 systemctl --user enable --now wa-bridge.service
 ```
 
-`tg-daemon.service` is ordered `After=`/`Wants=` `wa-bridge.service`, so the
+`zcoms-daemon.service` is ordered `After=`/`Wants=` `wa-bridge.service`, so the
 socket exists before triage runs. Check it end-to-end with:
 
 ```sh
-tg wa status
+zc wa status
 ```

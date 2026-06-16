@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"tg/internal/agent"
+	"zcoms/internal/agent"
 )
 
 // requireNoDaemon fails fast with a clear message when the bridge daemon is
@@ -12,7 +12,7 @@ import (
 func requireNoDaemon(command string) error {
 	if agent.DaemonRunning() {
 		return fmt.Errorf("the tg daemon is running and owns the Telegram session, so `%s` can't run.\n"+
-			"Stop it first:  systemctl --user stop tg-daemon", command)
+			"Stop it first:  systemctl --user stop zcoms-daemon", command)
 	}
 	return nil
 }

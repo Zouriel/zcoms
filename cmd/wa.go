@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"tg/internal/agent"
-	"tg/internal/whatsapp"
+	"zcoms/internal/agent"
+	"zcoms/internal/whatsapp"
 
 	"github.com/spf13/cobra"
 )
@@ -78,7 +78,7 @@ func init() {
 			if st.Ready {
 				fmt.Printf("Sidecar:  connected (paired, mirroring %d chat(s))\n", st.Chats)
 			} else {
-				fmt.Println("Sidecar:  running but not paired — run `tg wa login` to link a device")
+				fmt.Println("Sidecar:  running but not paired — run `zc wa login` to link a device")
 			}
 			return nil
 		},
@@ -87,7 +87,7 @@ func init() {
 	var loginWait time.Duration
 	loginCommand := &cobra.Command{
 		Use:   "login",
-		Short: "Link WhatsApp by scanning a QR (counterpart to `tg login`)",
+		Short: "Link WhatsApp by scanning a QR (counterpart to `zc tg login`)",
 		Long: "Shows the pairing QR from the running sidecar. Scan it in WhatsApp →\n" +
 			"Settings → Linked devices → Link a device. Requires the wa-bridge sidecar\n" +
 			"to be running (systemctl --user start wa-bridge).",
@@ -122,7 +122,7 @@ func init() {
 					return nil
 				}
 			}
-			fmt.Println("Still waiting — run `tg wa status` after scanning to confirm.")
+			fmt.Println("Still waiting — run `zc wa status` after scanning to confirm.")
 			return nil
 		},
 	}
@@ -130,7 +130,7 @@ func init() {
 
 	sendCommand := &cobra.Command{
 		Use:   "send <number|jid> <message>",
-		Short: "Send a WhatsApp message (counterpart to `tg send`)",
+		Short: "Send a WhatsApp message (counterpart to `zc tg send`)",
 		Args:  cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sock, err := waSocket()
@@ -148,7 +148,7 @@ func init() {
 
 	sendFileCommand := &cobra.Command{
 		Use:   "send-file <number|jid> <path> [caption]",
-		Short: "Send a file on WhatsApp (counterpart to `tg send-file`)",
+		Short: "Send a file on WhatsApp (counterpart to `zc tg send-file`)",
 		Args:  cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sock, err := waSocket()

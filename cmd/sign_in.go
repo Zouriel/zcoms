@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"tg/internal/config"
-	"tg/internal/tdlib"
+	"zcoms/internal/config"
+	"zcoms/internal/tdlib"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -134,7 +134,7 @@ func init() {
 		},
 	}
 
-	rootCmd.AddCommand(signInCommand)
+	tgCmd.AddCommand(signInCommand)
 }
 
 func safeCloseTDJSON(tdjson **tdlib.TDJSON) error {

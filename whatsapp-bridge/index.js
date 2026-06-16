@@ -1,4 +1,4 @@
-// TgCli WhatsApp bridge — a small Baileys sidecar.
+// zcoms WhatsApp bridge — a small Baileys sidecar.
 //
 // It owns its own WhatsApp Web (multi-device) session and exposes three
 // operations to the Go daemon over a Unix-domain socket, mirroring the tdlib
@@ -29,13 +29,13 @@ import pino from 'pino'
 import qrcode from 'qrcode-terminal'
 
 const HOME = homedir()
-const SOCK_PATH = process.env.WA_SOCK || join(HOME, '.config', 'tg', 'wa.sock')
-const AUTH_DIR = process.env.WA_AUTH || join(HOME, '.config', 'tg', 'wa-auth')
+const SOCK_PATH = process.env.WA_SOCK || join(HOME, '.config', 'zcoms', 'wa.sock')
+const AUTH_DIR = process.env.WA_AUTH || join(HOME, '.config', 'zcoms', 'wa-auth')
 // Where incoming media is downloaded so triage/the agent can open or forward it.
-const MEDIA_DIR = process.env.WA_MEDIA || join(HOME, '.config', 'tg', 'wa-media')
+const MEDIA_DIR = process.env.WA_MEDIA || join(HOME, '.config', 'zcoms', 'wa-media')
 // Disk snapshot of the chat mirror, so chats/unread survive a sidecar restart
 // (WhatsApp only re-pushes full history on a fresh QR link, never on reconnect).
-const STORE_PATH = process.env.WA_STORE || join(HOME, '.config', 'tg', 'wa-store.json')
+const STORE_PATH = process.env.WA_STORE || join(HOME, '.config', 'zcoms', 'wa-store.json')
 // Per-chat ring buffer cap for incoming text we keep available to `unread`.
 const MAX_BUFFER_PER_CHAT = 50
 
@@ -301,11 +301,11 @@ async function handleSendFile(sock, { chatId, path, text }) {
 
 async function dispatch(sock, req) {
   if (req.op === 'status') {
-    // Always answerable, even before pairing — used by `tg wa status`.
+    // Always answerable, even before pairing — used by `zc wa status`.
     return { ok: true, ready, chats: chatMeta.size }
   }
   if (req.op === 'qr') {
-    // Answerable before pairing — used by `tg wa login` to render the QR.
+    // Answerable before pairing — used by `zc wa login` to render the QR.
     return { ok: true, ready, qr: ready ? '' : lastQRAscii }
   }
   if (!ready) return { ok: false, error: 'whatsapp not authenticated / not connected yet' }
@@ -383,7 +383,7 @@ async function connect() {
     if (qr) {
       console.log('\nScan this QR with WhatsApp → Linked devices → Link a device:\n')
       qrcode.generate(qr, { small: true })
-      // Also stash an ASCII rendering so `tg wa login` can show it over the socket.
+      // Also stash an ASCII rendering so `zc wa login` can show it over the socket.
       qrcode.generate(qr, { small: true }, (s) => {
         lastQRAscii = s
       })

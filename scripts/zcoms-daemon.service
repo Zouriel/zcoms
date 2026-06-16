@@ -1,5 +1,5 @@
 [Unit]
-Description=TgCli agent bridge (tg init agent)
+Description=zcoms agent bridge (zc init agent)
 After=network-online.target
 Wants=network-online.target
 # If the optional WhatsApp sidecar is enabled, start it first so its socket
@@ -10,9 +10,9 @@ Wants=wa-bridge.service
 [Service]
 Type=simple
 # .env (TG_API_ID/TG_API_HASH) is loaded from the working directory.
-# Edit this path if your TgCli checkout lives elsewhere.
-WorkingDirectory=%h/personal/TgCli
-ExecStart=%h/.local/bin/tg init agent
+# Edit this path if your zcoms checkout lives elsewhere.
+WorkingDirectory=%h/personal/zcoms
+ExecStart=%h/.local/bin/zc init agent
 Restart=on-failure
 RestartSec=5
 

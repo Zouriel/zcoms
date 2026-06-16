@@ -1,9 +1,9 @@
 {
-  "name": "tg-whatsapp-bridge",
+  "name": "zcoms-whatsapp-bridge",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Baileys sidecar for TgCli: serves unread/read/send over a Unix socket so the Go daemon can triage and reply to WhatsApp alongside Telegram.",
+  "description": "Baileys sidecar for zcoms: serves unread/read/send over a Unix socket so the Go daemon can triage and reply to WhatsApp alongside Telegram.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"

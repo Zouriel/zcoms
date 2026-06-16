@@ -1,16 +1,16 @@
-# Agent bridge (`tg init agent`)
+# Agent bridge (`zc init agent`)
 
-`tg init agent` turns the logged-in Telegram account into a two-way bridge: allow-listed
+`zc init agent` turns the logged-in Telegram account into a two-way bridge: allow-listed
 users message the account and drive an **AI agent** (Claude Code or Codex) on this machine
 (pick a project, resume a past session with a summary, chat back and forth), while your own
-`tg send` / `tg ask` notifications keep working through the same account. It can also
+`zc tg send` / `zc tg ask` notifications keep working through the same account. It can also
 auto-reply to strangers and DM you an hourly digest of important messages.
 
 ## How it runs
 
 The daemon owns the single Telegram session and listens on a Unix socket
-(`~/.config/tg/daemon.sock`, owner-only `0600`). `tg send`, `tg ask`, `tg send-file`,
-and `tg chat` — **including `tg chat <id> --read N`** to snapshot a chat's recent
+(`~/.config/zcoms/daemon.sock`, owner-only `0600`). `zc tg send`, `zc tg ask`, `zc tg send-file`,
+and `zc tg chat` — **including `zc tg chat <id> --read N`** to snapshot a chat's recent
 history — automatically route through that socket when the daemon is running, and fall
 back to opening their own session when it isn't. So reading and replying to any chat
 work normally while the daemon is up; there's no need to stop it.
@@ -22,20 +22,20 @@ by the daemon on startup and by `auth`/`login`/`logout`, so it tracks the live s
 Stop the daemon to use the session-owning commands:
 
 ```sh
-systemctl --user stop tg-daemon
+systemctl --user stop zcoms-daemon
 ```
 
 Run it as a service (stays up, restarts on crash, starts on boot):
 
 ```sh
-cp scripts/tg-daemon.service ~/.config/systemd/user/   # edit WorkingDirectory if needed
-systemctl --user enable --now tg-daemon
+cp scripts/zcoms-daemon.service ~/.config/systemd/user/   # edit WorkingDirectory if needed
+systemctl --user enable --now zcoms-daemon
 loginctl enable-linger "$USER"                          # start on boot without login
 ```
 
 ## Configuration
 
-Two JSON files in the tg config dir (`~/.config/tg/`), both kept `0600`:
+Two JSON files in the zcoms config dir (`~/.config/zcoms/`), both kept `0600`:
 
 **`agent-allowlist.json`** — who may use the bridge, at what role, and (optionally) which
 agent backend:
@@ -114,7 +114,7 @@ identical to a Telegram-only build.
 
 ```json
 {
-  "whatsapp": { "enabled": false, "socket": "/home/you/.config/tg/wa.sock", "mark_read_on_reply": false }
+  "whatsapp": { "enabled": false, "socket": "/home/you/.config/zcoms/wa.sock", "mark_read_on_reply": false }
 }
 ```
 
@@ -125,7 +125,7 @@ When enabled and the sidecar is running:
   Each line is tagged `[WhatsApp]` / `[Telegram]` so you know where to look. On
   any sidecar error, triage logs `[triage]` and continues with Telegram only.
 - **`interact triage`** — send this to the bridge to start a session seeded with
-  the **last triage batch** (persisted to `~/.config/tg/last-triage.json`, so it
+  the **last triage batch** (persisted to `~/.config/zcoms/last-triage.json`, so it
   survives restarts and works long after the digest). Tell the agent who to
   reply to; it can only reply to people **in that batch, by index**, and the
   daemon (never the agent) sends — over WhatsApp or Telegram as appropriate.
@@ -135,7 +135,7 @@ When enabled and the sidecar is running:
 > the paired number carries a ban risk. Prefer a **secondary number** and enable
 > 2FA. See the [sidecar README](../whatsapp-bridge/README.md). `mark_read_on_reply`
 > defaults **off** for WhatsApp (triage already marks threads read at digest
-> time). Check status with `tg wa status`.
+> time). Check status with `zc wa status`.
 
 ## ⚠️ Security model — read before adding anyone
 

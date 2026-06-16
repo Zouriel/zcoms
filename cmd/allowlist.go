@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"tg/internal/agent"
+	"zcoms/internal/agent"
 
 	"github.com/spf13/cobra"
 )
@@ -74,7 +74,7 @@ func init() {
 						continue
 					}
 					if _, ok := locs[name]; !ok {
-						fmt.Printf("warning: location %q isn't defined (tg locations add ...)\n", name)
+						fmt.Printf("warning: location %q isn't defined (zc locations add ...)\n", name)
 					}
 				}
 			}
@@ -91,7 +91,7 @@ func init() {
 
 			fmt.Printf("Added %s (role=%s, locations=%s) -> %s\n", username, role, strings.Join(locations, ","), path)
 			fmt.Printf("⚠️  This grants %s agent access to this machine (roles gate writes, not reads).\n", username)
-			fmt.Println("Restart the daemon to apply: systemctl --user restart tg-daemon")
+			fmt.Println("Restart the daemon to apply: systemctl --user restart zcoms-daemon")
 			return nil
 		},
 	}
@@ -117,7 +117,7 @@ func init() {
 				return err
 			}
 			fmt.Printf("Removed %s (%s)\n", username, path)
-			fmt.Println("Restart the daemon to apply: systemctl --user restart tg-daemon")
+			fmt.Println("Restart the daemon to apply: systemctl --user restart zcoms-daemon")
 			return nil
 		},
 	}

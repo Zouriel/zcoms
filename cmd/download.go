@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"tg/internal/tdlib"
+	"zcoms/internal/tdlib"
 
 	"github.com/spf13/cobra"
 )
@@ -39,7 +39,7 @@ func init() {
 		Short: "List recent received media (newest first) and download a chosen one",
 		Long: "Media is never downloaded automatically. This command lists the most\n" +
 			"recent media in a chat (newest first); pick one to download it into\n" +
-			"~/Downloads/telegramcli/<chat>/.",
+			"~/Downloads/zcoms/<chat>/.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := strings.TrimSpace(args[0])
@@ -128,7 +128,7 @@ func init() {
 	downloadCommand.Flags().BoolVar(&jsonOutput, "json", false, "List media as JSON and exit (no download)")
 	downloadCommand.Flags().IntVarP(&pick, "pick", "p", -1, "Download this index non-interactively (0 = newest)")
 
-	rootCmd.AddCommand(downloadCommand)
+	tgCmd.AddCommand(downloadCommand)
 }
 
 func collectRecentMedia(tdjson *tdlib.TDJSON, clientID int32, chatID int64, limit int) ([]mediaItem, error) {

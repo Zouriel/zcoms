@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"tg/internal/config"
-	"tg/internal/tdlib"
+	"zcoms/internal/config"
+	"zcoms/internal/tdlib"
 
 	"github.com/spf13/cobra"
 )
@@ -35,7 +35,7 @@ func init() {
 	}
 
 	signOutCommand.Flags().BoolVar(&hardSignOut, "hard", false, "Remove local Telegram session data (TDLib directory)")
-	rootCmd.AddCommand(signOutCommand)
+	tgCmd.AddCommand(signOutCommand)
 }
 
 func executeSignOut(hardSignOut bool) (string, string, error) {

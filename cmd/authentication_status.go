@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"tg/internal/authentication"
-	"tg/internal/config"
-	"tg/internal/tdlib"
+	"zcoms/internal/authentication"
+	"zcoms/internal/config"
+	"zcoms/internal/tdlib"
 
 	"github.com/spf13/cobra"
 )
@@ -95,5 +95,5 @@ func init() {
 		},
 	}
 
-	rootCmd.AddCommand(authenticationStatusCommand)
+	tgCmd.AddCommand(authenticationStatusCommand)
 }

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"tg/internal/tdlib"
+	"zcoms/internal/tdlib"
 
 	"github.com/spf13/cobra"
 )
@@ -68,7 +68,7 @@ func init() {
 		},
 	}
 
-	rootCmd.AddCommand(followChatCommand)
+	tgCmd.AddCommand(followChatCommand)
 }
 
 func executeChatFollow(tdjson *tdlib.TDJSON, clientID int32, chatID int64) error {
@@ -150,7 +150,7 @@ func executeChatFollow(tdjson *tdlib.TDJSON, clientID int32, chatID int64) error
 		sender := resolveSenderDisplayName(tdjson, clientID, u.Message.SenderID, userNameCache, chatTitleCache)
 		fmt.Printf("%s: %s\n", sender, formatMessageContent(u.Message.Content))
 
-		// Media is never auto-downloaded — use `tg download <chat>` to pick and
+		// Media is never auto-downloaded — use `zc tg download <chat>` to pick and
 		// fetch a specific file deliberately.
 	}
 }

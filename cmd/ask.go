@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"tg/internal/agent"
-	"tg/internal/tdlib"
+	"zcoms/internal/agent"
+	"zcoms/internal/tdlib"
 
 	"github.com/spf13/cobra"
 )
@@ -147,5 +147,5 @@ func init() {
 		},
 	}
 
-	rootCmd.AddCommand(askCommand)
+	tgCmd.AddCommand(askCommand)
 }

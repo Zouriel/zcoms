@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"tg/internal/tdlib"
+	"zcoms/internal/tdlib"
 )
 
 // uploadsSubdir is where files sent through the bridge are saved, inside the
 // active project so the (sandboxed) agent can read them.
-const uploadsSubdir = "tg-uploads"
+const uploadsSubdir = "zcoms-uploads"
 
 // handleIncomingFile downloads a file an allow-listed user sent into the active
 // project and remembers it. Saving doesn't depend on the agent, so this works

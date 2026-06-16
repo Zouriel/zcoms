@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"tg/internal/agent"
+	"zcoms/internal/agent"
 
 	"github.com/spf13/cobra"
 )
@@ -14,7 +14,7 @@ func init() {
 		Use:   "agents",
 		Short: "Show or set which agent (claude/codex) handles which task",
 		Long: "Shows installed agents and the configured default + per-task overrides\n" +
-			"(edit agents.json directly, or use `tg agents set <task> <agent>`).",
+			"(edit agents.json directly, or use `zc agents set <task> <agent>`).",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, path, err := agent.LoadOrSeedAgents()
 			if err != nil {
@@ -79,7 +79,7 @@ func init() {
 				return err
 			}
 			fmt.Printf("Set %s -> %s (%s)\n", task, backend, path)
-			fmt.Println("Restart the daemon to apply: systemctl --user restart tg-daemon")
+			fmt.Println("Restart the daemon to apply: systemctl --user restart zcoms-daemon")
 			return nil
 		},
 	}

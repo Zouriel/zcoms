@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"tg/internal/tdlib"
+	"zcoms/internal/tdlib"
 
 	"github.com/spf13/cobra"
 )
@@ -87,5 +87,5 @@ func init() {
 	}
 
 	selectChatCommand.Flags().IntVarP(&limit, "limit", "n", 20, "Number of chats to list")
-	rootCmd.AddCommand(selectChatCommand)
+	tgCmd.AddCommand(selectChatCommand)
 }

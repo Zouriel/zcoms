@@ -4,12 +4,14 @@
 # Compiled binaries
 *.exe
 *.zip
+/zc
 /tg
 
 # Release bundles
 dist/
 
 # Runtime data the bridge writes (received files, etc.) — may be private
+zcoms-uploads/
 tg-uploads/
 
 # Air hot-reload temp dir

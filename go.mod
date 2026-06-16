@@ -1,4 +1,4 @@
-module tg
+module zcoms
 
 go 1.25.6
 

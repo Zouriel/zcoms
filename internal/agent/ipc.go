@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// The daemon owns the single Telegram session. When it's running, `tg send`/
-// `tg ask` route their request through this Unix socket instead of opening their
+// The daemon owns the single Telegram session. When it's running, `zc tg send`/
+// `zc tg ask` route their request through this Unix socket instead of opening their
 // own client (which would deadlock on the session lock). When it's absent, the
 // commands fall back to talking to Telegram directly.
 
@@ -41,7 +41,7 @@ type ipcRequest struct {
 }
 
 // IPCMessage is one history message returned by the daemon's "read" op. It
-// mirrors the fields `tg chat` prints so the CLI can render it identically
+// mirrors the fields `zc tg chat` prints so the CLI can render it identically
 // whether the daemon answered or it talked to Telegram directly.
 type IPCMessage struct {
 	MessageID int64  `json:"message_id"`
@@ -117,14 +117,14 @@ func DaemonSend(to, text string) (handled bool, msgID, chatID int64, err error) 
 }
 
 // DaemonAsk sends a question through a running daemon and blocks until the user
-// replies (no timeout, matching standalone `tg ask`). handled is false when no
+// replies (no timeout, matching standalone `zc tg ask`). handled is false when no
 // daemon is listening.
 func DaemonAsk(to, text string) (handled bool, reply string, err error) {
 	resp, handled, err := roundTrip(ipcRequest{Op: "ask", To: to, Text: text}, time.Time{})
 	return handled, resp.Reply, err
 }
 
-// DaemonChatWait routes a `tg chat` turn through the daemon: it optionally sends
+// DaemonChatWait routes a `zc tg chat` turn through the daemon: it optionally sends
 // text (empty = just listen) and waits for the user's next reply, up to timeout
 // (0 = no limit). handled is false when no daemon is listening.
 func DaemonChatWait(to, text string, timeout time.Duration) (handled bool, reply string, err error) {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"tg/internal/agent"
+	"zcoms/internal/agent"
 
 	"github.com/spf13/cobra"
 )

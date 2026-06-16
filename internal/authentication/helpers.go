@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"tg/internal/config"
-	"tg/internal/tdlib"
+	"zcoms/internal/config"
+	"zcoms/internal/tdlib"
 )
 
 func RequireAuthenticatedSession() error {
@@ -23,7 +23,7 @@ func RequireAuthenticatedSession() error {
 		return err
 	}
 	if state != tdlib.AuthStateReady {
-		return fmt.Errorf("not logged in (run `tg login`)")
+		return fmt.Errorf("not logged in (run `zc tg login`)")
 	}
 
 	return nil
@@ -61,7 +61,7 @@ func ResolveIdentityLabel(configuration config.Config, configPath string) (strin
 
 func PersistIdentity(configuration config.Config, configPath string, user tdlib.User) (config.Config, error) {
 	// Reaching here means TDLib is AuthStateReady, so mark the session authorized.
-	// This is the one chokepoint shared by `tg auth`, `tg login`, and the daemon;
+	// This is the one chokepoint shared by `zc tg auth`, `zc tg login`, and the daemon;
 	// without it auth_state stays at its "unauthorized" default forever (logout
 	// resets it via clearLocalSessionState).
 	configuration.AuthState = config.AuthStateAuthorized

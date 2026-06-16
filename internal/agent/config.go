@@ -1,4 +1,4 @@
-// Package agent implements the `tg daemon` bridge: it listens on the logged-in
+// Package agent implements the `zc init agent` bridge: it listens on the logged-in
 // Telegram account for messages from allow-listed users and drives Claude Code
 // sessions on their behalf (pick a location, resume a session, chat back/forth).
 package agent
@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"tg/internal/config"
+	"zcoms/internal/config"
 )
 
 // Role controls how much an allow-listed user can make Claude do.

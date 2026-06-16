@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"tg/internal/agent"
-	"tg/internal/tdlib"
+	"zcoms/internal/agent"
+	"zcoms/internal/tdlib"
 
 	"github.com/spf13/cobra"
 )
@@ -66,12 +66,12 @@ func init() {
 		},
 	}
 
-	rootCmd.AddCommand(sendFileCommand)
+	tgCmd.AddCommand(sendFileCommand)
 }
 
 // waitUntilReady drives the auth state machine far enough to reach Ready,
 // applying TDLib parameters if asked. It assumes an existing session (no
-// interactive login) — run `tg login` first if not authenticated.
+// interactive login) — run `zc tg login` first if not authenticated.
 func waitUntilReady(tdjson *tdlib.TDJSON, clientID int32, apiID int32, apiHash string) error {
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
@@ -96,7 +96,7 @@ func waitUntilReady(tdjson *tdlib.TDJSON, clientID int32, apiID int32, apiHash s
 				return err
 			}
 		default:
-			return fmt.Errorf("not logged in (run `tg login`)")
+			return fmt.Errorf("not logged in (run `zc tg login`)")
 		}
 		time.Sleep(200 * time.Millisecond)
 	}

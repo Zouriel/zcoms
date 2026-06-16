@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"tg/internal/agent"
+	"zcoms/internal/agent"
 
 	"github.com/spf13/cobra"
 )
@@ -12,7 +12,7 @@ import (
 // errandUnavailable is shown when no daemon is running — errands live inside the
 // daemon (it owns the Telegram session and drives the conversation), so there's
 // no standalone fallback.
-const errandUnavailable = "the agent bridge isn't running — start it with `tg init agent` (errands run inside the daemon)"
+const errandUnavailable = "the agent bridge isn't running — start it with `zc init agent` (errands run inside the daemon)"
 
 func init() {
 	errandCommand := &cobra.Command{
@@ -21,7 +21,7 @@ func init() {
 		Long: "An errand is a friendly, autonomous task: the agent messages a contact, asks for\n" +
 			"what's needed ONE question at a time (telling them how many remain), collects their\n" +
 			"answers and any files, builds the deliverable, then sends you the file(s) plus a\n" +
-			"summary and pings you when done. Errands run inside the `tg init agent` daemon.",
+			"summary and pings you when done. Errands run inside the `zc init agent` daemon.",
 	}
 
 	var deliver, start bool

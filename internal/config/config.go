@@ -25,7 +25,7 @@ func DefaultAppDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(userConfigDirectory, "tg"), nil
+	return filepath.Join(userConfigDirectory, "zcoms"), nil
 }
 
 func LoadOrCreate() (Config, string, error) {

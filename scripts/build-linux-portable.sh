@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
 # Builds a fully self-contained, portable Linux bundle in an old-glibc container
-# (Ubuntu 20.04 => glibc 2.31) and assembles dist/TgCli-linux-x64.tar.gz.
+# (Ubuntu 20.04 => glibc 2.31) and assembles dist/zcoms-linux-x64.tar.gz.
 #
 # The bundle contains, all targeting old glibc and carrying their own OpenSSL:
-#   tg                     (Go binary, cgo; glibc floor ~2.3)
+#   zc                     (Go binary, cgo; glibc floor ~2.3)
 #   libtdjson.so[.x.y.z]   (TDLib; glibc floor ~2.29, rpath=$ORIGIN)
 #   libssl.so.1.1          (rpath=$ORIGIN)
 #   libcrypto.so.1.1
@@ -31,7 +31,7 @@ TDLIB_REF="${TDLIB_REF:-master}"
 JOBS="${JOBS:-4}"
 
 OUT="$ROOT/dist"
-STAGE_NAME="TgCli-linux-x64"
+STAGE_NAME="zcoms-linux-x64"
 rm -rf "$OUT/$STAGE_NAME" "$OUT/$STAGE_NAME.tar.gz"
 mkdir -p "$OUT/$STAGE_NAME"
 
@@ -61,13 +61,13 @@ docker run --rm \
     cp -a libtdjson.so* /out/
     strip /out/libtdjson.so* 2>/dev/null || true
 
-    # --- tg (Go binary, cgo) ---
+    # --- zc (Go binary, cgo) ---
     export PATH=/usr/local/go/bin:$PATH
     export GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomod GOTOOLCHAIN=local
     cd /src
     # -buildvcs=false: the repo is bind-mounted with a different owner than the
     # container user, so git refuses VCS stamping ("dubious ownership", exit 128).
-    CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -o /out/tg .
+    CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -o /out/zc .
 
     # --- bundle OpenSSL 1.1 + make libs self-referential ---
     SSLDIR=/usr/lib/x86_64-linux-gnu

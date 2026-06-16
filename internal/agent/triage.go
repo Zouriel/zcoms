@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"tg/internal/tdlib"
-	"tg/internal/whatsapp"
+	"zcoms/internal/tdlib"
+	"zcoms/internal/whatsapp"
 )
 
 // triageMessage is one unread message from a non-allow-listed sender, on either
@@ -172,7 +172,7 @@ func (d *daemon) collectUnread() ([]triageMessage, readPlan) {
 
 // runTriageLoop runs an initial pass shortly after start, then follows the
 // configured schedule. The schedule is re-read from disk each cycle, so
-// `tg triage <schedule>` (and on/off) take effect without a restart.
+// `zc triage <schedule>` (and on/off) take effect without a restart.
 func (d *daemon) runTriageLoop() {
 	fmt.Printf("[triage] %s, agent=%s, dir=%s\n", d.settings.Triage.Describe(), d.triageBackend, d.settings.Triage.Dir)
 
@@ -182,7 +182,7 @@ func (d *daemon) runTriageLoop() {
 		d.runTriageOnce(tri.Dir)
 	}
 
-	// Poll so `tg triage <schedule>` (and on/off) take effect within ~30s.
+	// Poll so `zc triage <schedule>` (and on/off) take effect within ~30s.
 	lastKey := ""
 	nextRun := time.Now()
 	for {

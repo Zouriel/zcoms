@@ -8,22 +8,22 @@ import (
 	"strings"
 	"time"
 
-	"tg/internal/tdlib"
+	"zcoms/internal/tdlib"
 )
 
 const mediaDownloadTimeout = 30 * time.Minute
 
-// downloadsRoot is ~/Downloads/telegramcli, the base folder under which each
+// downloadsRoot is ~/Downloads/zcoms, the base folder under which each
 // chat gets its own subfolder.
 func downloadsRoot() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, "Downloads", "telegramcli"), nil
+	return filepath.Join(home, "Downloads", "zcoms"), nil
 }
 
-// chatDownloadDir returns (and creates) ~/Downloads/telegramcli/<chat>/ for the
+// chatDownloadDir returns (and creates) ~/Downloads/zcoms/<chat>/ for the
 // given chat, using a sanitized chat title with a chat-id fallback.
 func chatDownloadDir(chatTitle string, chatID int64) (string, error) {
 	root, err := downloadsRoot()

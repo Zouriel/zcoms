@@ -22,7 +22,7 @@ func OpenChat(tdjson *TDJSON, clientID int32, chatID int64) error {
 
 // FetchChatHistorySnapshot returns up to limit recent messages (newest first)
 // WITHOUT opening the chat or marking anything read — for read-only peeks such as
-// `tg chat --read` and the daemon's read op / READ directive. It pages via the
+// `zc tg chat --read` and the daemon's read op / READ directive. It pages via the
 // same no-open primitive triage uses (historyPage). Prefer this over
 // FetchChatHistory whenever the caller must not emit read receipts.
 // maxSnapshotMessages is a hard ceiling so no single snapshot can page an entire

@@ -6,13 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"tg/internal/agent"
-	"tg/internal/tdlib"
+	"zcoms/internal/agent"
+	"zcoms/internal/tdlib"
 
 	"github.com/spf13/cobra"
 )
 
-// chatMessage is the machine-readable shape emitted by `tg chat --json`.
+// chatMessage is the machine-readable shape emitted by `zc tg chat --json`.
 type chatMessage struct {
 	MessageID int64  `json:"message_id"`
 	ChatID    int64  `json:"chat_id"`
@@ -168,7 +168,7 @@ func init() {
 				}
 
 				// Media is not downloaded by default; pass --download to fetch it
-				// (use only for trusted senders — see `tg download` for a picker).
+				// (use only for trusted senders — see `zc tg download` for a picker).
 				filePath := ""
 				if download {
 					if path, _, isMedia, dlErr := downloadIncomingMedia(tdjson, clientID, chatTitle, chatID, u.Message.Content); isMedia && dlErr == nil {
@@ -189,7 +189,7 @@ func init() {
 	chatCommand.Flags().BoolVar(&jsonOutput, "json", false, "Emit messages as JSON lines")
 	chatCommand.Flags().BoolVar(&download, "download", false, "Download media in the reply (off by default)")
 
-	rootCmd.AddCommand(chatCommand)
+	tgCmd.AddCommand(chatCommand)
 }
 
 func buildChatMessage(m tdlib.Message, sender, filePath string) chatMessage {

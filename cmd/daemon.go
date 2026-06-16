@@ -3,9 +3,9 @@ package cmd
 import (
 	"fmt"
 
-	"tg/internal/agent"
-	"tg/internal/authentication"
-	"tg/internal/tdlib"
+	"zcoms/internal/agent"
+	"zcoms/internal/authentication"
+	"zcoms/internal/tdlib"
 
 	"github.com/spf13/cobra"
 )
@@ -13,7 +13,7 @@ import (
 func init() {
 	initCommand := &cobra.Command{
 		Use:   "init",
-		Short: "Start long-running tg services",
+		Short: "Start long-running zcoms services",
 	}
 
 	agentCommand := &cobra.Command{
@@ -22,7 +22,7 @@ func init() {
 		Long: "Listens on the logged-in Telegram account for messages from allow-listed\n" +
 			"users and drives an AI agent (Claude Code or Codex) on their behalf: pick a\n" +
 			"location, resume a session with a summary, chat back and forth. Configure with\n" +
-			"agent-locations.json and agent-allowlist.json in the tg config dir.",
+			"agent-locations.json and agent-allowlist.json in the zcoms config dir.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			apiID, apiHash, err := resolveTelegramCredentials()
 			if err != nil {
@@ -65,7 +65,7 @@ func init() {
 			if err == nil {
 				fmt.Println("Running as:", self.FirstName, self.LastName)
 				// Record identity + auth_state so config.json reflects the live
-				// session (the daemon owns TDLib, so `tg auth` can't run to do it).
+				// session (the daemon owns TDLib, so `zc tg auth` can't run to do it).
 				if updated, perr := authentication.PersistIdentity(AppConfig, ConfigFilePath, self); perr == nil {
 					AppConfig = updated
 				}
