@@ -525,9 +525,14 @@ WantedBy=default.target
 		return err
 	}
 	_ = runSystemctl("daemon-reload")
-	if err := runSystemctl("enable", "--now", unitName); err != nil {
+	if err := runSystemctl("enable", unitName); err != nil {
 		return fmt.Errorf("enable %s: %w", unitName, err)
 	}
-	fmt.Println("🔄 started", unitName)
+	// restart (not just enable --now) so a re-install picks up the new binary
+	// even when the service is already running.
+	if err := runSystemctl("restart", unitName); err != nil {
+		return fmt.Errorf("restart %s: %w", unitName, err)
+	}
+	fmt.Println("🔄 (re)started", unitName)
 	return nil
 }
