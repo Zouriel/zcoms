@@ -16,7 +16,7 @@ import (
 func isTeamCommand(text string) bool {
 	lower := strings.ToLower(strings.TrimSpace(text))
 	switch lower {
-	case "add task", "add tasks", "new task", "finish task", "team":
+	case "add task", "add tasks", "new task", "finish task", "give up", "team":
 		return true
 	}
 	for _, prefix := range []string{"team ", "delegator ", "standup ", "staff ", "task ", "agent create "} {
