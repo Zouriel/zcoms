@@ -121,6 +121,7 @@ func (d *daemon) collectUnread() ([]triageMessage, readPlan) {
 // can read the same inbox the daemon would.
 func (d *daemon) collectUnreadTG() ([]triageMessage, readPlan) {
 	plan := readPlan{TG: map[int64][]int64{}, WA: map[string][]string{}}
+	owned := loadClaims() // chats an active errand owns — skip them
 
 	chatIDs, err := tdlib.FetchChatIdentifiers(d.tdjson, d.clientID, 80)
 	if err != nil {
@@ -154,8 +155,8 @@ func (d *daemon) collectUnreadTG() ([]triageMessage, readPlan) {
 		if allowed {
 			continue // allow-listed users drive the bridge, not triage
 		}
-		if d.activeErrandForTG(cid) != nil {
-			continue // an errand owns this conversation; don't also triage it
+		if owned.hasTG(cid) {
+			continue // the errands component owns this conversation; don't triage it
 		}
 
 		unread, err := tdlib.FetchUnreadIncoming(d.tdjson, d.clientID, cid, info.LastReadInboxMessageID)

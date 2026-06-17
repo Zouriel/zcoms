@@ -2,8 +2,33 @@ package agent
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
+
+	"zcoms/internal/tdlib"
 )
+
+// routeToErrands marks an incoming claimed-chat message read and pushes it to
+// the errands component as an event (downloading any attachment first).
+func (d *daemon) routeToErrands(msg tdlib.Message) {
+	_ = tdlib.MarkMessagesRead(d.tdjson, d.clientID, msg.ChatID, []int64{msg.ID})
+	ev := ipcEvent{
+		Event:     "message",
+		ChatID:    msg.ChatID,
+		UserID:    msg.SenderID.UserID,
+		Sender:    d.senderName(msg.SenderID.UserID),
+		Text:      replyText(msg.Content),
+		Kind:      msg.Content.Type,
+		MessageID: msg.ID,
+		Date:      msg.Date,
+	}
+	if msg.Content.Type != "messageText" {
+		ev.File = d.downloadMessageMedia(msg)
+	}
+	if !d.pushEvent("errands", ev) {
+		fmt.Printf("[errand] reply in chat %d but no errands component subscribed (dropped)\n", msg.ChatID)
+	}
+}
 
 // serveSubscription registers a component's event stream for the given role and
 // pumps pushed events to it until the client disconnects. The daemon never

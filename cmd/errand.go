@@ -9,10 +9,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// errandUnavailable is shown when no daemon is running — errands live inside the
-// daemon (it owns the Telegram session and drives the conversation), so there's
-// no standalone fallback.
-const errandUnavailable = "the agent bridge isn't running — start it with `zc init agent` (errands run inside the daemon)"
+// errandUnavailable is shown when the errands component isn't running.
+const errandUnavailable = "the errands component isn't running — install/start it with `zc install errands`"
 
 func init() {
 	errandCommand := &cobra.Command{
@@ -21,7 +19,7 @@ func init() {
 		Long: "An errand is a friendly, autonomous task: the agent messages a contact, asks for\n" +
 			"what's needed ONE question at a time (telling them how many remain), collects their\n" +
 			"answers and any files, builds the deliverable, then sends you the file(s) plus a\n" +
-			"summary and pings you when done. Errands run inside the `zc init agent` daemon.",
+			"summary and pings you when done. Errands run in the `zcoms-errands` component.",
 	}
 
 	var deliver, start bool
@@ -37,7 +35,15 @@ func init() {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := args[0]
 			brief := strings.Join(args[1:], " ")
-			handled, reply, err := agent.DaemonErrandStart(target, brief, deliver, start)
+			cmdline := "errand start "
+			if deliver {
+				cmdline += "deliver "
+			}
+			if start {
+				cmdline += "go "
+			}
+			cmdline += target + " | " + brief
+			handled, reply, err := agent.ErrandsCommand(cmdline)
 			if !handled {
 				return fmt.Errorf(errandUnavailable)
 			}
@@ -55,7 +61,7 @@ func init() {
 		Use:   "list",
 		Short: "List active errands",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			handled, reply, err := agent.DaemonErrandList()
+			handled, reply, err := agent.ErrandsCommand("errand list")
 			if !handled {
 				return fmt.Errorf(errandUnavailable)
 			}
@@ -72,7 +78,7 @@ func init() {
 		Short: "Cancel an errand (the contact stops being messaged)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			handled, reply, err := agent.DaemonErrandCancel(args[0])
+			handled, reply, err := agent.ErrandsCommand("errand cancel " + args[0])
 			if !handled {
 				return fmt.Errorf(errandUnavailable)
 			}

@@ -295,91 +295,19 @@ func (d *daemon) reviseErrandPlan(e *Errand, changes string) {
 	d.driveErrandAsync(e, prompt)
 }
 
-// handleErrandCommand handles the owner's `errand …` bridge commands.
+// handleErrandCommand forwards the owner's `errand …` bridge command to the
+// external errands component and relays its reply.
 func (d *daemon) handleErrandCommand(st *userState, text string) {
-	fields := strings.Fields(text)
-	if len(fields) < 2 {
-		d.send(st.chatID, d.errandListText()+"\n\nCommands: errand list · errand start [deliver] [go] <@user|wa:JID|#index> | <brief> · errand yes [id] · errand no [id] · errand edit [id] <changes> · errand cancel <id>")
+	handled, reply, err := ErrandsCommand(text)
+	if !handled {
+		d.send(st.chatID, "The errands component isn't running — install it with `zc install errands`.")
 		return
 	}
-
-	switch strings.ToLower(fields[1]) {
-	case "list":
-		d.send(st.chatID, d.errandListText())
-
-	case "start":
-		_, after, _ := strings.Cut(text, "start")
-		spec, err := parseErrandStart(after)
-		if err != nil {
-			d.send(st.chatID, "⚠️ "+err.Error())
-			return
-		}
-		msg, err := d.startErrand(spec)
-		if err != nil {
-			d.send(st.chatID, "⚠️ "+err.Error())
-			return
-		}
-		d.send(st.chatID, msg)
-
-	case "yes", "go", "approve":
-		id := ""
-		if len(fields) >= 3 {
-			id = fields[2]
-		}
-		e := d.pendingErrand(id)
-		if e == nil {
-			d.send(st.chatID, "No errand is waiting for approval (give an id if there are several): errand yes <id>")
-			return
-		}
-		d.send(st.chatID, "👍 Starting errand "+e.ID+"…")
-		d.approveErrand(e, "")
-
-	case "no", "reject":
-		id := ""
-		if len(fields) >= 3 {
-			id = fields[2]
-		}
-		e := d.pendingErrand(id)
-		if e == nil {
-			d.send(st.chatID, "No errand is waiting for approval.")
-			return
-		}
-		d.setErrandStatus(e, ErrandCancelled)
-		d.send(st.chatID, "🛑 Dropped errand "+e.ID+".")
-
-	case "edit":
-		rest := fields[2:]
-		id := ""
-		if len(rest) > 0 && d.errandExists(rest[0]) {
-			id, rest = rest[0], rest[1:]
-		}
-		e := d.pendingErrand(id)
-		if e == nil {
-			d.send(st.chatID, "No errand is waiting for approval to edit.")
-			return
-		}
-		changes := strings.TrimSpace(strings.Join(rest, " "))
-		if changes == "" {
-			d.send(st.chatID, "Usage: errand edit [id] <what to change>")
-			return
-		}
-		d.send(st.chatID, "✏️ Revising the plan for errand "+e.ID+"…")
-		d.reviseErrandPlan(e, changes)
-
-	case "cancel":
-		if len(fields) < 3 {
-			d.send(st.chatID, "Usage: errand cancel <id>")
-			return
-		}
-		if e, ok := d.cancelErrand(fields[2]); ok {
-			d.send(st.chatID, "🛑 Cancelled errand "+e.ID+". "+e.TargetName+" won't be messaged further.")
-		} else {
-			d.send(st.chatID, "No errand with id "+fields[2]+".")
-		}
-
-	default:
-		d.send(st.chatID, "Unknown errand command. Try: errand list · errand start … · errand yes · errand cancel <id>")
+	if err != nil {
+		d.send(st.chatID, "⚠️ "+err.Error())
+		return
 	}
+	d.send(st.chatID, reply)
 }
 
 // parseErrandStart parses the part after "start": "[deliver] [go] <target> | <brief>".

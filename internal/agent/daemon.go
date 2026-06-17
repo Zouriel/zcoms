@@ -180,9 +180,9 @@ func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow 
 	// Scheduled triage now runs in the external `zcoms-triage` component (it reads
 	// unread via the daemon's IPC `unread` op and replies via `send`). The daemon
 	// only serves those ops + `interact triage`; it no longer runs the loop.
-	if d.errandsInstalled {
-		go d.runErrandLoop() // advances WhatsApp errands (no push) and resumes errands after a restart
-	}
+	// Errands run in the external zcoms-errands component (it subscribes for TG
+	// replies, polls WhatsApp, and drives the agents). The daemon only routes
+	// claimed chats to it (see routeToErrands) and serves its IPC.
 
 	for {
 		updateJSON, err := tdlib.ReceiveUpdates(tdjson)
@@ -237,10 +237,10 @@ func (d *daemon) dispatchUpdate(updateJSON string) {
 		return
 	}
 
-	// An active errand for this contact takes over the conversation: route their
-	// reply into it and never auto-reply or triage them while it's running.
-	if e := d.activeErrandForTG(u.Message.ChatID); e != nil {
-		d.routeTGErrandReply(e, u.Message)
+	// A chat claimed by the external errands component (an active errand owns it)
+	// is routed there; never auto-reply or triage it while it's claimed.
+	if loadClaims().hasTG(u.Message.ChatID) {
+		d.routeToErrands(u.Message)
 		return
 	}
 
