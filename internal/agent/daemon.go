@@ -256,6 +256,14 @@ func (d *daemon) dispatchUpdate(updateJSON string) {
 		return
 	}
 
+	// If the external bridge component is connected, hand it the message and let
+	// it drive the session; otherwise fall through to the in-core bridge (so the
+	// daemon keeps working as a fallback when no external bridge is running).
+	if d.hasSubscriber("bridge") {
+		d.routeToBridge(st, u.Message)
+		return
+	}
+
 	// Mark the owner's incoming message read immediately so the bridge chat never
 	// accumulates unread — covers every allow-listed mode (chat, interact triage,
 	// commands, files) since they all flow through here.

@@ -137,33 +137,33 @@ func runInstall(name string, force bool) error {
 
 // component → its GitHub repo + binary name, for the prebuilt-release download.
 var componentArtifact = map[components.Name]struct{ repo, bin string }{
+	components.Bridge:  {"Zouriel/zcoms-bridge", "zcoms-bridge"},
 	components.Triage:  {"Zouriel/zcoms-triage", "zcoms-triage"},
 	components.Errands: {"Zouriel/zcoms-errands", "zcoms-errands"},
 }
 
-// activateComponent makes a freshly-installed component live.
+// activateComponent makes a freshly-installed component live: it fetches the
+// component's prebuilt binary and runs it as its own systemd service. The bridge
+// also ensures the core session daemon (which owns the Telegram session and
+// serves IPC) is installed and running first.
 func activateComponent(c components.Name) error {
-	switch c {
-	case components.Bridge:
+	if c == components.Bridge {
 		if err := ensureDaemonService(); err != nil {
 			fmt.Printf("⚠️  could not set up the daemon service automatically: %v\n", err)
 			fmt.Println("   Install it manually, then: systemctl --user enable --now " + daemonUnit)
-			return nil
+		} else {
+			restartDaemon()
 		}
-		restartDaemon()
-		return nil
-	default:
-		art, ok := componentArtifact[c]
-		if !ok {
-			return nil
-		}
-		fmt.Printf("   ↓ downloading %s…\n", art.bin)
-		if err := fetchComponentBinary(art.repo, art.bin); err != nil {
-			return fmt.Errorf("download failed: %w (build from source: github.com/%s)", err, art.repo)
-		}
-		unit := string(c) // zcoms-<c>.service via componentUnitName
-		return ensureComponentService(componentUnitName(c), fmt.Sprintf("zcoms %s component", unit), art.bin)
 	}
+	art, ok := componentArtifact[c]
+	if !ok {
+		return nil
+	}
+	fmt.Printf("   ↓ downloading %s…\n", art.bin)
+	if err := fetchComponentBinary(art.repo, art.bin); err != nil {
+		return fmt.Errorf("download failed: %w (build from source: github.com/%s)", err, art.repo)
+	}
+	return ensureComponentService(componentUnitName(c), fmt.Sprintf("zcoms %s component", c), art.bin)
 }
 
 // runUninstall removes a component and any components that depend on it.
@@ -204,15 +204,14 @@ func runUninstall(name string) error {
 func deactivateComponent(c components.Name) {
 	switch c {
 	case components.Bridge:
-		// The session host goes away — stop the core daemon (and triage with it).
+		// Stop the external bridge brain and the session daemon it depends on.
+		_ = runSystemctl("disable", "--now", componentUnitName(c))
 		_ = runSystemctl("disable", "--now", daemonUnit)
 	case components.Triage:
 		disableTriage()
 		_ = runSystemctl("disable", "--now", componentUnitName(c))
 	case components.Errands:
-		// Errands still runs inside the core daemon today — restart it so it drops
-		// the errand loop now that the component is gone.
-		restartDaemon()
+		_ = runSystemctl("disable", "--now", componentUnitName(c))
 	}
 }
 

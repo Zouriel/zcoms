@@ -30,6 +30,26 @@ func (d *daemon) routeToErrands(msg tdlib.Message) {
 	}
 }
 
+// routeToBridge marks an allow-listed user's message read and pushes it to the
+// external bridge component (downloading any attachment first).
+func (d *daemon) routeToBridge(st *userState, msg tdlib.Message) {
+	_ = tdlib.MarkMessagesRead(d.tdjson, d.clientID, msg.ChatID, []int64{msg.ID})
+	ev := ipcEvent{
+		Event:     "message",
+		ChatID:    msg.ChatID,
+		UserID:    msg.SenderID.UserID,
+		Sender:    st.username,
+		Text:      replyText(msg.Content),
+		Kind:      msg.Content.Type,
+		MessageID: msg.ID,
+		Date:      msg.Date,
+	}
+	if msg.Content.Type != "messageText" {
+		ev.File = d.downloadMessageMedia(msg)
+	}
+	d.pushEvent("bridge", ev)
+}
+
 // serveSubscription registers a component's event stream for the given role and
 // pumps pushed events to it until the client disconnects. The daemon never
 // blocks on a slow subscriber (pushEvent drops when the buffer is full).
