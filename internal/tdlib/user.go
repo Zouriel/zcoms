@@ -44,6 +44,29 @@ func FetchCurrentUser(tdjson *TDJSON, clientID int32) (User, error) {
 
 	return user, nil
 }
+
+func FetchUser(tdjson *TDJSON, clientID int32, userID int64) (User, error) {
+	responseJSON, err := SendRequestAndWait(
+		tdjson,
+		clientID,
+		fmt.Sprintf(`{"@type":"getUser","user_id":%d}`, userID),
+		"get-user",
+		5*time.Second,
+	)
+	if err != nil {
+		return User{}, err
+	}
+
+	var user User
+	if err := json.Unmarshal([]byte(responseJSON), &user); err != nil {
+		return User{}, err
+	}
+	if user.ID == 0 {
+		return User{}, fmt.Errorf("user not found: %d", userID)
+	}
+	return user, nil
+}
+
 func ResolveUserIdentifierByUsername(tdjson *TDJSON, clientID int32, username string) (int64, error) {
 	if strings.HasPrefix(username, "@") {
 		username = username[1:]

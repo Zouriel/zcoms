@@ -15,8 +15,8 @@ func init() {
 		Short: "Team coordination: delegators, staff, tasks, standups (zc-team component)",
 		Long: "Drives the zc-team component (team coordination, task delegation, GitHub\n" +
 			"Projects sync, automated standups). Examples:\n" +
-			"  zc team delegator create hems-dev MoHE-HEMS 1\n" +
-			"  zc team staff add hems-dev @ali ali-dev staff 2\n" +
+			"  zc team delegator create hems-dev\n" +
+			"  zc team staff add hems-dev @ali staff 2\n" +
 			"  zc team standup create hems-morning hems-dev @hems_team 09:00 Indian/Maldives\n" +
 			"  zc team help",
 		DisableFlagParsing: true, // pass the whole line through to the component

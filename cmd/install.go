@@ -275,8 +275,8 @@ func printPostInstallHints(installed []components.Name) {
 			fmt.Println("   • Dispatch one:       zc errand start <@user|wa:NUMBER> <brief>")
 			fmt.Println("   • Pick its agent:     zc agents set errands <claude|codex>")
 		case components.Team:
-			fmt.Println("   • Create a project:   zc team delegator create <name> <github_owner> <project#>")
-			fmt.Println("   • Add staff:          zc team staff add <delegator> <@user> <github> <role> <limit>")
+			fmt.Println("   • Create a project:   zc team delegator create <name>")
+			fmt.Println("   • Add staff:          zc team staff add <delegator> <@user> <role> <limit>")
 			fmt.Println("   • Schedule a standup: zc team standup create <name> <delegator> <@group> <HH:MM> <tz>")
 		}
 	}

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 
 func init() {
 	var limit int
+	var jsonOutput bool
 
 	selectChatCommand := &cobra.Command{
 		Use:   "chats",
@@ -62,10 +64,25 @@ func init() {
 				return fmt.Errorf("no chats found")
 			}
 
+			if jsonOutput {
+				for i, id := range chatIDs {
+					title, _ := tdlib.FetchChatTitle(tdjson, clientID, id)
+					b, err := json.Marshal(struct {
+						Index  int    `json:"index"`
+						ChatID int64  `json:"chat_id"`
+						Title  string `json:"title"`
+					}{Index: i, ChatID: id, Title: title})
+					if err == nil {
+						fmt.Println(string(b))
+					}
+				}
+				return nil
+			}
+
 			fmt.Println("Select a chat:")
 			for i, id := range chatIDs {
 				title, _ := tdlib.FetchChatTitle(tdjson, clientID, id)
-				fmt.Printf("[%d] %s\n", i, title)
+				fmt.Printf("[%d] %s  (chat_id=%d)\n", i, title, id)
 			}
 
 			fmt.Print("Enter number: ")
@@ -87,5 +104,6 @@ func init() {
 	}
 
 	selectChatCommand.Flags().IntVarP(&limit, "limit", "n", 20, "Number of chats to list")
+	selectChatCommand.Flags().BoolVar(&jsonOutput, "json", false, "List chats as JSON lines and exit")
 	tgCmd.AddCommand(selectChatCommand)
 }

@@ -14,7 +14,7 @@ func init() {
 		Use:   "agents",
 		Short: "Show or set which agent (claude/codex) handles which session type",
 		Long: "Shows installed agents and the configured default + the agent per session\n" +
-			"type — bridge, triage, errands (edit agents.json, or use `zc agents set`).",
+			"type — bridge, chat, triage, errands (edit agents.json, or use `zc agents set`).",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, path, err := agent.LoadOrSeedAgents()
 			if err != nil {
@@ -44,8 +44,8 @@ func init() {
 	}
 
 	setCommand := &cobra.Command{
-		Use:   "set <bridge|triage|errands|default> <claude|codex>",
-		Short: "Assign an agent to a session type (bridge, triage, errands) or the default",
+		Use:   "set <bridge|chat|triage|errands|default> <claude|codex>",
+		Short: "Assign an agent to a session type (bridge, chat, triage, errands) or the default",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			task := strings.ToLower(strings.TrimSpace(args[0]))
