@@ -31,6 +31,7 @@ var gatedCommands = map[string]components.Name{
 	"agents":    components.Bridge,
 	"triage":    components.Triage,
 	"errand":    components.Errands,
+	"team":      components.Team,
 }
 
 func Execute() error {

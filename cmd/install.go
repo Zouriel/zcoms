@@ -140,6 +140,7 @@ var componentArtifact = map[components.Name]struct{ repo, bin string }{
 	components.Bridge:  {"Zouriel/zcoms-bridge", "zcoms-bridge"},
 	components.Triage:  {"Zouriel/zcoms-triage", "zcoms-triage"},
 	components.Errands: {"Zouriel/zcoms-errands", "zcoms-errands"},
+	components.Team:    {"Zouriel/zcoms-team", "zcoms-team"},
 }
 
 // activateComponent makes a freshly-installed component live: it fetches the
@@ -273,6 +274,10 @@ func printPostInstallHints(installed []components.Name) {
 		case components.Errands:
 			fmt.Println("   • Dispatch one:       zc errand start <@user|wa:NUMBER> <brief>")
 			fmt.Println("   • Pick its agent:     zc agents set errands <claude|codex>")
+		case components.Team:
+			fmt.Println("   • Create a project:   zc team delegator create <name> <github_owner> <project#>")
+			fmt.Println("   • Add staff:          zc team staff add <delegator> <@user> <github> <role> <limit>")
+			fmt.Println("   • Schedule a standup: zc team standup create <name> <delegator> <@group> <HH:MM> <tz>")
 		}
 	}
 }

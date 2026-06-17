@@ -24,6 +24,7 @@ const (
 	Bridge  Name = "bridge"
 	Triage  Name = "triage"
 	Errands Name = "errands"
+	Team    Name = "team"
 )
 
 // Meta describes a component: what it does, what it depends on, and the
@@ -40,6 +41,7 @@ var registry = []Meta{
 	{Bridge, "Telegram agent bridge — locations, session management, and chat", nil, "bridge"},
 	{Triage, "Scheduled AI digest of incoming Telegram/WhatsApp messages", []Name{Bridge}, "triage"},
 	{Errands, "Dispatch autonomous interviewer→producer agents to a contact", []Name{Bridge}, "errands"},
+	{Team, "Team coordination, task delegation, GitHub Projects sync, and standups", []Name{Bridge, Errands}, ""},
 }
 
 // All returns the component catalog in display order.
