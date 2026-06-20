@@ -57,6 +57,75 @@ func init() {
 	startCommand.Flags().BoolVar(&deliver, "deliver", false, "Also send the finished deliverable to the contact")
 	startCommand.Flags().BoolVar(&start, "go", false, "Skip the approval step and start messaging immediately")
 
+	var schedDeliver, schedGo bool
+	scheduleCommand := &cobra.Command{
+		Use:   "schedule <@user|wa:NUMBER|#index> <when> <brief...>",
+		Short: "Schedule an errand to start at a future time",
+		Long: "Queue an errand to be dispatched automatically at a specific time. <when> is\n" +
+			"a relative duration (+30m, +2h, 1h30m), a wall-clock time today/tomorrow\n" +
+			"(15:30), or a full local timestamp (2026-06-18T15:30). When it fires it behaves\n" +
+			"exactly like `errand start`: it drafts a plan for your approval by default, or\n" +
+			"starts messaging immediately with --go. The target is resolved at fire time.",
+		Args: cobra.MinimumNArgs(3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target := args[0]
+			when := args[1]
+			brief := strings.Join(args[2:], " ")
+			cmdline := "errand schedule "
+			if schedDeliver {
+				cmdline += "deliver "
+			}
+			if schedGo {
+				cmdline += "go "
+			}
+			cmdline += target + " at " + when + " | " + brief
+			handled, reply, err := agent.ErrandsCommand(cmdline)
+			if !handled {
+				return fmt.Errorf(errandUnavailable)
+			}
+			if err != nil {
+				return err
+			}
+			fmt.Println(reply)
+			return nil
+		},
+	}
+	scheduleCommand.Flags().BoolVar(&schedDeliver, "deliver", false, "Also send the finished deliverable to the contact")
+	scheduleCommand.Flags().BoolVar(&schedGo, "go", false, "Skip the approval step and start messaging immediately when it fires")
+
+	scheduledCommand := &cobra.Command{
+		Use:   "scheduled",
+		Short: "List errands queued to fire at a future time",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			handled, reply, err := agent.ErrandsCommand("errand scheduled")
+			if !handled {
+				return fmt.Errorf(errandUnavailable)
+			}
+			if err != nil {
+				return err
+			}
+			fmt.Println(reply)
+			return nil
+		},
+	}
+
+	unscheduleCommand := &cobra.Command{
+		Use:   "unschedule <id>",
+		Short: "Cancel a scheduled errand before it fires",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			handled, reply, err := agent.ErrandsCommand("errand unschedule " + args[0])
+			if !handled {
+				return fmt.Errorf(errandUnavailable)
+			}
+			if err != nil {
+				return err
+			}
+			fmt.Println(reply)
+			return nil
+		},
+	}
+
 	listCommand := &cobra.Command{
 		Use:   "list",
 		Short: "List active errands",
@@ -90,6 +159,6 @@ func init() {
 		},
 	}
 
-	errandCommand.AddCommand(startCommand, listCommand, cancelCommand)
+	errandCommand.AddCommand(startCommand, scheduleCommand, scheduledCommand, unscheduleCommand, listCommand, cancelCommand)
 	rootCmd.AddCommand(errandCommand)
 }

@@ -211,7 +211,7 @@ func (d *daemon) resolveErrandTarget(e *Errand, target string) error {
 
 	// WhatsApp: explicit "wa:" prefix or a jid shape.
 	if strings.HasPrefix(target, "wa:") || strings.Contains(target, "@s.whatsapp.net") || strings.Contains(target, "@lid") {
-		jid := strings.TrimPrefix(target, "wa:")
+		jid := normalizeWAJID(strings.TrimPrefix(target, "wa:"))
 		e.Source = "wa"
 		e.WAChat = jid
 		e.TargetName = jid
@@ -239,6 +239,14 @@ func (d *daemon) resolveErrandTarget(e *Errand, target string) error {
 		e.TargetName = name
 	}
 	return nil
+}
+
+func normalizeWAJID(target string) string {
+	target = strings.TrimSpace(target)
+	if target == "" || strings.Contains(target, "@") {
+		return target
+	}
+	return target + "@s.whatsapp.net"
 }
 
 // pendingErrand returns the single errand awaiting the owner's approval, or the
