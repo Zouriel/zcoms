@@ -188,10 +188,7 @@ func SendLocalFileMessage(tdjson *TDJSON, clientID int32, chatID int64, path, ca
 		},
 	}
 	if caption != "" {
-		content["caption"] = map[string]any{
-			"@type": "formattedText",
-			"text":  caption,
-		}
+		content["caption"] = FormatOutgoingText(tdjson, clientID, caption)
 	}
 
 	request := map[string]any{
