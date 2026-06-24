@@ -14,6 +14,7 @@ import (
 
 	"zcoms/internal/agent"
 	"zcoms/internal/components"
+	"zcoms/internal/config"
 
 	"github.com/spf13/cobra"
 )
@@ -165,7 +166,14 @@ func activateComponent(c components.Name) error {
 	if err := fetchComponentBinary(art.repo, art.bin); err != nil {
 		return fmt.Errorf("download failed: %w (build from source: github.com/%s)", err, art.repo)
 	}
-	return ensureComponentService(componentUnitName(c), fmt.Sprintf("zcoms %s component", c), art.bin)
+	// Commerce loads its runtime URL/token from commerce.env (seeded above).
+	envFile := ""
+	if c == components.Commerce {
+		if p, err := commerceEnvPath(); err == nil {
+			envFile = p
+		}
+	}
+	return ensureComponentService(componentUnitName(c), fmt.Sprintf("zcoms %s component", c), art.bin, envFile)
 }
 
 // runUninstall removes a component and any components that depend on it.
@@ -250,8 +258,43 @@ func seedComponent(name components.Name) error {
 		if _, _, err := agent.LoadOrSeedAgents(); err != nil {
 			return err
 		}
+	case components.Commerce:
+		if err := seedCommerceEnv(); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// commerceEnvPath is the per-deploy env file holding the runtime URL + token.
+// The commerce component's systemd unit loads it (EnvironmentFile).
+func commerceEnvPath() (string, error) {
+	dir, err := config.DefaultAppDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "commerce.env"), nil
+}
+
+// seedCommerceEnv writes a commerce.env template on first install so the unit's
+// EnvironmentFile exists and the operator only has to fill in two values. It
+// never clobbers an existing file (which holds real secrets).
+func seedCommerceEnv() error {
+	path, err := commerceEnvPath()
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(path); err == nil {
+		return nil // already present — keep the operator's values
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmpl := "# zc-commerce runtime connection (fill these in, then:\n" +
+		"#   systemctl --user restart zcoms-commerce.service)\n" +
+		"ZC_COMMERCE_RUNTIME_URL=\n" +
+		"ZC_COMMERCE_RUNTIME_TOKEN=\n"
+	return os.WriteFile(path, []byte(tmpl), 0o600)
 }
 
 // disableTriage turns the triage schedule off when triage is uninstalled.
@@ -280,7 +323,8 @@ func printPostInstallHints(installed []components.Name) {
 			fmt.Println("   • Add staff:          zc team staff add <delegator> <@user> <role> <limit>")
 			fmt.Println("   • Schedule a standup: zc team standup create <name> <delegator> <@group> <HH:MM> <tz>")
 		case components.Commerce:
-			fmt.Println("   • Point at runtime:   set ZC_COMMERCE_RUNTIME_URL and ZC_COMMERCE_RUNTIME_TOKEN")
+			fmt.Println("   • Set the runtime:    edit ~/.config/zcoms/commerce.env (ZC_COMMERCE_RUNTIME_URL, ZC_COMMERCE_RUNTIME_TOKEN)")
+			fmt.Println("   • Apply it:           systemctl --user restart zcoms-commerce.service")
 			fmt.Println("   • Check connection:   zc commerce status")
 			fmt.Println("   • List stores:        zc commerce store list")
 		}
@@ -499,7 +543,7 @@ func fetchComponentBinary(repo, bin string) error {
 
 // ensureComponentService writes+enables a component's own user unit running its
 // downloaded binary.
-func ensureComponentService(unitName, desc, bin string) error {
+func ensureComponentService(unitName, desc, bin, envFile string) error {
 	dir, err := userUnitDir()
 	if err != nil {
 		return err
@@ -512,6 +556,12 @@ func ensureComponentService(unitName, desc, bin string) error {
 		return err
 	}
 	exe := filepath.Join(home, ".local", "bin", bin)
+	// Optional EnvironmentFile (the "-" prefix makes systemd tolerate it being
+	// absent, e.g. before the operator fills it in).
+	envLine := ""
+	if envFile != "" {
+		envLine = "EnvironmentFile=-" + envFile + "\n"
+	}
 	unit := fmt.Sprintf(`[Unit]
 Description=%s
 After=network-online.target %s
@@ -519,13 +569,13 @@ Wants=%s
 
 [Service]
 Type=simple
-ExecStart=%s
+%sExecStart=%s
 Restart=on-failure
 RestartSec=10
 
 [Install]
 WantedBy=default.target
-`, desc, daemonUnit, daemonUnit, exe)
+`, desc, daemonUnit, daemonUnit, envLine, exe)
 	if err := os.WriteFile(filepath.Join(dir, unitName), []byte(unit), 0o644); err != nil {
 		return err
 	}
