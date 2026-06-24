@@ -21,10 +21,11 @@ import (
 type Name string
 
 const (
-	Bridge  Name = "bridge"
-	Triage  Name = "triage"
-	Errands Name = "errands"
-	Team    Name = "team"
+	Bridge   Name = "bridge"
+	Triage   Name = "triage"
+	Errands  Name = "errands"
+	Team     Name = "team"
+	Commerce Name = "commerce"
 )
 
 // Meta describes a component: what it does, what it depends on, and the
@@ -42,6 +43,7 @@ var registry = []Meta{
 	{Triage, "Scheduled AI digest of incoming Telegram/WhatsApp messages", []Name{Bridge}, "triage"},
 	{Errands, "Dispatch autonomous interviewer→producer agents to a contact", []Name{Bridge}, "errands"},
 	{Team, "Team coordination, task delegation, GitHub Projects sync, and standups", []Name{Bridge, Errands}, ""},
+	{Commerce, "Zcoms Commerce control plane — stores, products, billing, and reporting against the runtime", nil, ""},
 }
 
 // All returns the component catalog in display order.

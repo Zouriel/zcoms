@@ -137,10 +137,11 @@ func runInstall(name string, force bool) error {
 
 // component → its GitHub repo + binary name, for the prebuilt-release download.
 var componentArtifact = map[components.Name]struct{ repo, bin string }{
-	components.Bridge:  {"Zouriel/zcoms-bridge", "zcoms-bridge"},
-	components.Triage:  {"Zouriel/zcoms-triage", "zcoms-triage"},
-	components.Errands: {"Zouriel/zcoms-errands", "zcoms-errands"},
-	components.Team:    {"Zouriel/zcoms-team", "zcoms-team"},
+	components.Bridge:   {"Zouriel/zcoms-bridge", "zcoms-bridge"},
+	components.Triage:   {"Zouriel/zcoms-triage", "zcoms-triage"},
+	components.Errands:  {"Zouriel/zcoms-errands", "zcoms-errands"},
+	components.Team:     {"Zouriel/zcoms-team", "zcoms-team"},
+	components.Commerce: {"Zouriel/zc-commerce", "zc-commerce"},
 }
 
 // activateComponent makes a freshly-installed component live: it fetches the
@@ -278,6 +279,10 @@ func printPostInstallHints(installed []components.Name) {
 			fmt.Println("   • Create a project:   zc team delegator create <name>")
 			fmt.Println("   • Add staff:          zc team staff add <delegator> <@user> <role> <limit>")
 			fmt.Println("   • Schedule a standup: zc team standup create <name> <delegator> <@group> <HH:MM> <tz>")
+		case components.Commerce:
+			fmt.Println("   • Point at runtime:   set ZC_COMMERCE_RUNTIME_URL and ZC_COMMERCE_RUNTIME_TOKEN")
+			fmt.Println("   • Check connection:   zc commerce status")
+			fmt.Println("   • List stores:        zc commerce store list")
 		}
 	}
 }
