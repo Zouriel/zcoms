@@ -65,17 +65,19 @@ type daemon struct {
 
 	// installed gates which daemon capabilities run (triage / errands), set from
 	// the components registry at startup.
-	triageInstalled  bool
-	errandsInstalled bool
-	teamInstalled    bool
+	triageInstalled   bool
+	errandsInstalled  bool
+	teamInstalled     bool
+	commerceInstalled bool
 
-	mu            sync.Mutex
-	byUser        map[int64]*userState    // resolved user id -> state
-	pendingAsk    map[int64][]chan string // user id -> queued `zc tg ask` waiters
-	lastAutoReply map[int64]time.Time     // user id -> last auto-reply time
-	teamSessions  map[int64]bool          // non-bridge team conversations needing continuation
-	nameCache     map[int64]string        // user id -> display name
-	errands       map[string]*Errand      // errand id -> dispatched questioning task
+	mu               sync.Mutex
+	byUser           map[int64]*userState    // resolved user id -> state
+	pendingAsk       map[int64][]chan string // user id -> queued `zc tg ask` waiters
+	lastAutoReply    map[int64]time.Time     // user id -> last auto-reply time
+	teamSessions     map[int64]bool          // non-bridge team conversations needing continuation
+	commerceSessions map[int64]bool          // commerce conversations needing continuation
+	nameCache        map[int64]string        // user id -> display name
+	errands          map[string]*Errand      // errand id -> dispatched questioning task
 
 	// triageMu serializes use of the persistent triage-brain session so the
 	// scheduled pass and an `interact triage` turn never drive it concurrently.
@@ -92,22 +94,23 @@ type daemon struct {
 // messages until interrupted.
 func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow Allowlist, settings Settings, agents AgentConfig) error {
 	d := &daemon{
-		tdjson:         tdjson,
-		clientID:       clientID,
-		locations:      locations,
-		settings:       settings,
-		agents:         agents,
-		bridgeBackend:  agents.For("bridge", ""),
-		chatBackend:    agents.For("chat", ""),
-		triageBackend:  agents.For("triage", ""),
-		errandsBackend: agents.For("errands", ""),
-		byUser:         map[int64]*userState{},
-		pendingAsk:     map[int64][]chan string{},
-		lastAutoReply:  map[int64]time.Time{},
-		teamSessions:   map[int64]bool{},
-		nameCache:      map[int64]string{},
-		errands:        map[string]*Errand{},
-		subscribers:    map[string][]chan ipcEvent{},
+		tdjson:           tdjson,
+		clientID:         clientID,
+		locations:        locations,
+		settings:         settings,
+		agents:           agents,
+		bridgeBackend:    agents.For("bridge", ""),
+		chatBackend:      agents.For("chat", ""),
+		triageBackend:    agents.For("triage", ""),
+		errandsBackend:   agents.For("errands", ""),
+		byUser:           map[int64]*userState{},
+		pendingAsk:       map[int64][]chan string{},
+		lastAutoReply:    map[int64]time.Time{},
+		teamSessions:     map[int64]bool{},
+		commerceSessions: map[int64]bool{},
+		nameCache:        map[int64]string{},
+		errands:          map[string]*Errand{},
+		subscribers:      map[string][]chan ipcEvent{},
 	}
 
 	// Gate optional capabilities by what's installed (components registry).
@@ -115,6 +118,7 @@ func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow 
 		d.triageInstalled = state.IsInstalled(components.Triage)
 		d.errandsInstalled = state.IsInstalled(components.Errands)
 		d.teamInstalled = state.IsInstalled(components.Team)
+		d.commerceInstalled = state.IsInstalled(components.Commerce)
 	}
 
 	// Reload any errands persisted before a restart so they keep running.
@@ -165,7 +169,7 @@ func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow 
 	}
 
 	fmt.Printf("Daemon running. %d user(s) allow-listed. Listening...\n", resolved)
-	fmt.Printf("components: bridge=on triage=%s errands=%s\n", onOff(d.triageInstalled), onOff(d.errandsInstalled))
+	fmt.Printf("components: bridge=on triage=%s errands=%s team=%s commerce=%s\n", onOff(d.triageInstalled), onOff(d.errandsInstalled), onOff(d.teamInstalled), onOff(d.commerceInstalled))
 	fmt.Println("⚠️  SECURITY: allow-listed users can drive an AI agent on this machine.")
 	fmt.Println("    Roles limit WRITES, not reads — 'read' can still exfiltrate any file this user can")
 	fmt.Println("    open, and locations don't sandbox the agent. Keep the allowlist tiny and enable")
@@ -254,6 +258,10 @@ func (d *daemon) dispatchUpdate(updateJSON string) {
 		text := strings.TrimSpace(u.Message.Content.Text.Text)
 		if d.shouldRouteTeam(u.Message.SenderID.UserID, text) {
 			d.routeToTeam(u.Message, text)
+			return
+		}
+		if d.shouldRouteCommerce(u.Message.SenderID.UserID, text) {
+			d.routeToCommerce(u.Message, text)
 			return
 		}
 	}
@@ -748,7 +756,7 @@ func (d *daemon) statusLine(st *userState) string {
 }
 
 func (d *daemon) helpText(st *userState) string {
-	return strings.Join([]string{
+	lines := []string{
 		"🤖 Agent bridge — commands:",
 		"  locations — pick a project to work in",
 		"  resume — continue a past session (with a summary)",
@@ -758,10 +766,16 @@ func (d *daemon) helpText(st *userState) string {
 		"  interact triage — talk to the triage agent (same memory) & reply to people",
 		"  chat — full general-purpose assistant (files, shell, SSH) in your home dir",
 		"  triage reset — wipe the triage agent's memory (fresh session next pass)",
+	}
+	if d.commerceInstalled {
+		lines = append(lines, "  commerce — Commerce control plane (e.g. `commerce store list`, `commerce status`)")
+	}
+	lines = append(lines,
 		"Anything else you type is sent to the agent.",
 		"",
-		"Your role: " + string(st.entry.Role),
-	}, "\n")
+		"Your role: "+string(st.entry.Role),
+	)
+	return strings.Join(lines, "\n")
 }
 
 // send posts text to a chat, splitting anything over Telegram's length limit.
