@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Zouriel/zcoms/internal/comms/whatsapp"
+	"github.com/Zouriel/zcoms/whatsapp"
 
 	"github.com/spf13/cobra"
 )
