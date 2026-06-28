@@ -26,7 +26,7 @@ func init() {
 		Long: "An errand is a friendly, autonomous task: the agent messages a contact, asks for\n" +
 			"what's needed ONE question at a time (telling them how many remain), collects their\n" +
 			"answers and any files, builds the deliverable, then sends you the file(s) plus a\n" +
-			"summary and pings you when done. Errands run in the `zcoms-errands` component.",
+			"summary and pings you when done. Errands run in the agent (`zc install agent`).",
 	}
 
 	var deliver, start bool
