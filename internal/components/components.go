@@ -20,28 +20,29 @@ import (
 // Name identifies an installable component.
 type Name string
 
+// In the 3-repo architecture the installables are tiers, each its own user-space
+// binary over IPC: the agent (the whole AI layer — bridge, triage, errands,
+// session manager) and the modules above it (team, console). Comms is the always-
+// present core (`zc tg`/`zc wa`), never an installable.
 const (
-	Bridge  Name = "bridge"
-	Triage  Name = "triage"
-	Errands Name = "errands"
+	Agent   Name = "agent"
 	Team    Name = "team"
+	Console Name = "console"
 )
 
-// Meta describes a component: what it does, what it depends on, and the
-// agents.json task key for its session type (see internal/agent agent selection).
+// Meta describes an installable: what it does and which tiers it requires.
 type Meta struct {
-	Name      Name
-	Summary   string
-	Requires  []Name
-	AgentTask string
+	Name     Name
+	Summary  string
+	Requires []Name
 }
 
-// registry is the canonical list of components, in install/display order.
+// registry is the canonical list of installables, in install/display order.
+// Each declares its dependency tier(s); `zc install` resolves the chain.
 var registry = []Meta{
-	{Bridge, "Telegram agent bridge — locations, session management, and chat", nil, "bridge"},
-	{Triage, "Scheduled AI digest of incoming Telegram/WhatsApp messages", []Name{Bridge}, "triage"},
-	{Errands, "Dispatch autonomous interviewer→producer agents to a contact", []Name{Bridge}, "errands"},
-	{Team, "Team coordination, task delegation, GitHub Projects sync, and standups", []Name{Bridge, Errands}, ""},
+	{Agent, "AI layer — interactive bridge, triage, errands, session manager (agent.db)", nil},
+	{Team, "Team coordination, task delegation, GitHub Projects sync, and standups", []Name{Agent}},
+	{Console, "Owner-only local web UI to edit every store (contacts/workspaces/personas/…)", []Name{Agent}},
 }
 
 // All returns the component catalog in display order.

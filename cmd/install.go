@@ -21,16 +21,16 @@ const daemonUnit = "zcoms-daemon.service"
 
 func init() {
 	installCommand := &cobra.Command{
-		Use:   "install [bridge|triage|errands]",
-		Short: "Install an optional component (agent bridge, triage, errands)",
-		Long: "zcoms ships with Telegram + WhatsApp comms (`zc tg` / `zc wa`). The agent\n" +
-			"features are opt-in components that run inside the bridge daemon:\n\n" +
-			"  bridge   — interactive agent sessions: locations, session management, chat\n" +
-			"  triage   — scheduled AI digest of incoming messages (configure with `zc triage`)\n" +
-			"  errands  — dispatch autonomous interviewer→producer agents (needs bridge)\n\n" +
-			"Run with no argument to see what's installed. Installing triage or errands\n" +
-			"pulls in bridge automatically. Each install (re)starts the daemon so the\n" +
-			"component is active immediately, and its commands appear in `zc --help`.",
+		Use:   "install [agent|team|console]",
+		Short: "Install a tier (agent AI layer, or a module like team/console)",
+		Long: "zcoms ships with Telegram + WhatsApp comms (`zc tg` / `zc wa`). Everything\n" +
+			"above is an opt-in tier — its own pure-Go binary, composing over IPC:\n\n" +
+			"  agent    — the AI layer: bridge, triage, errands, session manager (agent.db)\n" +
+			"  team     — team coordination, delegation, GitHub sync, standups (needs agent)\n" +
+			"  console  — owner-only local web UI to edit every store (needs agent)\n\n" +
+			"Run with no argument to see what's installed. Installing a module pulls in\n" +
+			"the agent (and the comms daemon) automatically. Each install fetches the\n" +
+			"prebuilt binary and runs it as a systemd user service.",
 		Args:         cobra.MaximumNArgs(1),
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -134,20 +134,20 @@ func runInstall(name string, force bool) error {
 	return nil
 }
 
-// component → its GitHub repo + binary name, for the prebuilt-release download.
+// installable → its GitHub repo + binary name, for the prebuilt-release download.
 var componentArtifact = map[components.Name]struct{ repo, bin string }{
-	components.Bridge:  {"Zouriel/zcoms-bridge", "zcoms-bridge"},
-	components.Triage:  {"Zouriel/zcoms-triage", "zcoms-triage"},
-	components.Errands: {"Zouriel/zcoms-errands", "zcoms-errands"},
+	components.Agent:   {"Zouriel/zcoms-agent", "zcoms-agent"},
 	components.Team:    {"Zouriel/zcoms-team", "zcoms-team"},
+	components.Console: {"Zouriel/zcoms-console", "zcoms-console"},
 }
 
-// activateComponent makes a freshly-installed component live: it fetches the
-// component's prebuilt binary and runs it as its own systemd service. The bridge
-// also ensures the core session daemon (which owns the Telegram session and
-// serves IPC) is installed and running first.
+// activateComponent makes a freshly-installed tier live: it fetches the prebuilt
+// binary and runs it as its own systemd user service. The agent (the lowest
+// installable tier) also ensures the core comms daemon — which owns the Telegram
+// session and serves IPC — is installed and running first, since every tier
+// dials it.
 func activateComponent(c components.Name) error {
-	if c == components.Bridge {
+	if c == components.Agent {
 		if err := ensureDaemonService(); err != nil {
 			fmt.Printf("⚠️  could not set up the daemon service automatically: %v\n", err)
 			fmt.Println("   Install it manually, then: systemctl --user enable --now " + daemonUnit)
@@ -200,50 +200,33 @@ func runUninstall(name string) error {
 	return nil
 }
 
-// deactivateComponent stops a removed component's process/feature.
+// deactivateComponent stops a removed tier's service. The comms daemon is core
+// and is left running (other tiers or plain `zc tg` may still need it).
 func deactivateComponent(c components.Name) {
-	switch c {
-	case components.Bridge:
-		// Stop the external bridge brain and the session daemon it depends on.
-		_ = runSystemctl("disable", "--now", componentUnitName(c))
-		_ = runSystemctl("disable", "--now", daemonUnit)
-	case components.Triage:
-		disableTriage()
-		_ = runSystemctl("disable", "--now", componentUnitName(c))
-	case components.Errands:
-		_ = runSystemctl("disable", "--now", componentUnitName(c))
-	}
+	_ = runSystemctl("disable", "--now", componentUnitName(c))
 }
 
-// seedComponent is a no-op for the agent-tier components: the agent owns its own
-// config in agent.db and seeds/migrates it on first run (importing any legacy
-// JSON). Comms no longer reads or writes agent config.
+// seedComponent is a no-op: each tier owns its own state (the agent seeds/migrates
+// agent.db on first run; modules own their db). Comms no longer seeds anything.
 func seedComponent(name components.Name) error {
 	_ = name
 	return nil
 }
 
-// disableTriage is a no-op: the triage schedule lives in agent.db now and is
-// managed by the agent (`zc agent triage off`), not the comms installer.
-func disableTriage() {}
-
 func printPostInstallHints(installed []components.Name) {
 	for _, c := range installed {
 		switch c {
-		case components.Bridge:
-			fmt.Println("   • Allow yourself in:  zc allowlist add <@you> full")
-			fmt.Println("   • Add a project:      zc locations add <name> <path>")
-			fmt.Println("   • Pick its agent:     zc agents set bridge <claude|codex>")
-		case components.Triage:
-			fmt.Println("   • Configure schedule: zc triage <30m|1h|…|twice-daily>")
-			fmt.Println("   • Pick its agent:     zc agents set triage <claude|codex>")
-		case components.Errands:
-			fmt.Println("   • Dispatch one:       zc errand start <@user|wa:NUMBER> <brief>")
-			fmt.Println("   • Pick its agent:     zc agents set errands <claude|codex>")
+		case components.Agent:
+			fmt.Println("   • Allow yourself in:    zc agent allowlist add <@you> full")
+			fmt.Println("   • Set discovery roots:  zc agent settings set discovery_roots <path[,path]>")
+			fmt.Println("   • Find your repos:      zc agent workspace sync")
+			fmt.Println("   • Pick a backend:       zc agent persona set bridge backend <claude|codex>")
 		case components.Team:
 			fmt.Println("   • Create a project:   zc team delegator create <name>")
 			fmt.Println("   • Add staff:          zc team staff add <delegator> <@user> <role> <limit>")
 			fmt.Println("   • Schedule a standup: zc team standup create <name> <delegator> <@group> <HH:MM> <tz>")
+		case components.Console:
+			fmt.Println("   • Open the console:   zc console   (then log in — localhost only)")
 		}
 	}
 }

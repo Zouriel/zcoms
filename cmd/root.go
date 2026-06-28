@@ -20,19 +20,13 @@ var rootCmd = &cobra.Command{
 var AppConfig config.Config
 var ConfigFilePath string
 
-// gatedCommands maps a root command name to the component that must be installed
-// for it to be usable. Until then the command is hidden from `zc --help` and
-// running it prints an install hint. Core comms (`tg`/`wa`) and `install`/
-// `uninstall` are never gated.
-var gatedCommands = map[string]components.Name{
-	"init":      components.Bridge,
-	"allowlist": components.Bridge,
-	"locations": components.Bridge,
-	"agents":    components.Bridge,
-	"triage":    components.Triage,
-	"errand":    components.Errands,
-	"team":      components.Team,
-}
+// gatedCommands maps a root command name to a component that must be installed
+// for it to be usable. In the 3-repo architecture the agent-driving commands
+// (init/allowlist/locations/agents/triage/errand/agent/team) are thin clients of
+// the agent/module sockets and self-report when their tier isn't running
+// ("install it with `zc install agent`"), so nothing is hard-gated here. Left as
+// a seam for any future module that genuinely needs hiding until installed.
+var gatedCommands = map[string]components.Name{}
 
 func Execute() error {
 	loadedConfig, loadedConfigPath, err := config.LoadOrCreate()
