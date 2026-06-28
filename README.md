@@ -1,11 +1,19 @@
-# zcoms
+# zcoms — the comms foundation
 
-A Telegram CLI built on [TDLib](https://github.com/tdlib/td) — send & receive messages and
-media, follow chats live, and ask questions that block until you get a reply, all from your
-terminal. It's built to be **scripted** (CI, cron, AI-agent loops), and ships an optional
-**agent bridge** that lets you drive **Claude Code / Codex** from Telegram, get an
-AI-triaged digest of incoming messages, and dispatch **errands** — autonomous agents that
-go ask a contact what's needed and bring back a finished file.
+`zcoms` is the **comms foundation** of the zcoms ecosystem: it builds the `zc` binary,
+owns the single TDLib Telegram session (plus the WhatsApp Baileys sidecar), and serves
+them to everything above it over a local IPC socket. Send & receive messages and media,
+follow chats live, ask questions that block until you get a reply, and manage a **contacts
+directory** (`comms.db`) — all from your terminal, all **scriptable** (CI, cron, AI loops).
+
+It is a **dumb pipe**: it knows nothing about AI. The AI layer (interactive bridge, triage,
+errands, session manager, personas) runs in the separate **`zcoms-agent`** process and
+reaches Telegram/WhatsApp through this daemon. Install it with `zc install agent`; install
+modules like team with `zc install <module>`.
+
+**Published contract:** other tiers import `github.com/Zouriel/zcoms/client` — the wire
+protocol, the IPC `Client`, the component `Harness`, and `ProtocolVersion` (advertised by
+the daemon on connect; a mismatch fails loudly). They never open another tier's database.
 
 Works on **Windows** and **Linux**.
 
