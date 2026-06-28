@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	"zcoms/internal/tdlib"
-	"zcoms/internal/whatsapp"
+	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/whatsapp"
 )
 
 // errandDirective matches one content-bearing action line. Which directives are

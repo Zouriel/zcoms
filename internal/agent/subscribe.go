@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 
-	"zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/tdlib"
 )
 
 // routeToErrands marks an incoming claimed-chat message read and pushes it to

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/tdlib"
 )
 
 func isTeamCommand(text string) bool {

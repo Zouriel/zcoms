@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"zcoms/internal/tdlib"
-	"zcoms/internal/whatsapp"
+	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/whatsapp"
 )
 
 // triageMessage is one unread message from a non-allow-listed sender, on either

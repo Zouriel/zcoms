@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/tdlib"
 )
 
 // serveIPC opens the Unix socket that `zc tg send`/`zc tg ask` connect to so they can

@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"zcoms/internal/agent"
+	"github.com/Zouriel/zcoms/internal/agent"
 )
 
 // requireNoDaemon fails fast with a clear message when the bridge daemon is

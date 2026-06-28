@@ -1,4 +1,4 @@
-module zcoms
+module github.com/Zouriel/zcoms
 
 go 1.25.6
 

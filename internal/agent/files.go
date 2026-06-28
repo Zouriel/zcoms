@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/tdlib"
 )
 
 // uploadsSubdir is where files sent through the bridge are saved, inside the

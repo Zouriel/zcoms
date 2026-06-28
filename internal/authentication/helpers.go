@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"zcoms/internal/config"
-	"zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/config"
+	"github.com/Zouriel/zcoms/internal/tdlib"
 )
 
 func RequireAuthenticatedSession() error {

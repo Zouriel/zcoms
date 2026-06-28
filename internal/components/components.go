@@ -14,7 +14,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"zcoms/internal/config"
+	"github.com/Zouriel/zcoms/internal/config"
 )
 
 // Name identifies an installable component.

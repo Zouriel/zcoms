@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/tdlib"
 )
 
 const mediaDownloadTimeout = 30 * time.Minute

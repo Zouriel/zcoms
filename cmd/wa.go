@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"zcoms/internal/agent"
-	"zcoms/internal/whatsapp"
+	"github.com/Zouriel/zcoms/internal/agent"
+	"github.com/Zouriel/zcoms/internal/whatsapp"
 
 	"github.com/spf13/cobra"
 )

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"zcoms/internal/tdlib"
-	"zcoms/internal/whatsapp"
+	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/whatsapp"
 )
 
 // errandPollInterval is how often the daemon checks WhatsApp for replies to

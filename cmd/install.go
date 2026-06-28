@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"zcoms/internal/agent"
-	"zcoms/internal/components"
+	"github.com/Zouriel/zcoms/internal/agent"
+	"github.com/Zouriel/zcoms/internal/components"
 
 	"github.com/spf13/cobra"
 )

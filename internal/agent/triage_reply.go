@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"zcoms/internal/tdlib"
-	"zcoms/internal/whatsapp"
+	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/whatsapp"
 )
 
 // sendDirective matches a single reply instruction emitted by the interactive

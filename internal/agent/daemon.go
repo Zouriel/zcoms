@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"zcoms/internal/components"
-	"zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/components"
+	"github.com/Zouriel/zcoms/internal/tdlib"
 )
 
 const telegramMaxLen = 4000

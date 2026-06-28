@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"zcoms/internal/agent"
+	"github.com/Zouriel/zcoms/internal/agent"
 
 	"github.com/spf13/cobra"
 )

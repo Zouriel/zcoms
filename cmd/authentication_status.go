@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"zcoms/internal/authentication"
-	"zcoms/internal/config"
-	"zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/authentication"
+	"github.com/Zouriel/zcoms/internal/config"
+	"github.com/Zouriel/zcoms/internal/tdlib"
 
 	"github.com/spf13/cobra"
 )

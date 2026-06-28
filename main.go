@@ -8,7 +8,7 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"zcoms/cmd"
+	"github.com/Zouriel/zcoms/cmd"
 )
 
 func main() {

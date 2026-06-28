@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
-	"zcoms/internal/components"
-	"zcoms/internal/config"
+	"github.com/Zouriel/zcoms/internal/components"
+	"github.com/Zouriel/zcoms/internal/config"
 
 	"github.com/spf13/cobra"
 )

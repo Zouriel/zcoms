@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"zcoms/internal/config"
+	"github.com/Zouriel/zcoms/internal/config"
 )
 
 // Role controls how much an allow-listed user can make Claude do.

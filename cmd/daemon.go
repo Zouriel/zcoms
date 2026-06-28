@@ -3,9 +3,9 @@ package cmd
 import (
 	"fmt"
 
-	"zcoms/internal/agent"
-	"zcoms/internal/authentication"
-	"zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/agent"
+	"github.com/Zouriel/zcoms/internal/authentication"
+	"github.com/Zouriel/zcoms/internal/tdlib"
 
 	"github.com/spf13/cobra"
 )
