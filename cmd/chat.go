@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Zouriel/zcoms/internal/agent"
 	"github.com/Zouriel/zcoms/internal/comms/telegram"
 
 	"github.com/spf13/cobra"
@@ -46,9 +45,9 @@ func init() {
 			message := strings.Join(args[1:], " ")
 
 			// Route through the daemon when it's running (it owns the session).
-			if agent.DaemonRunning() {
+			if daemonRunning() {
 				if readCount > 0 {
-					handled, msgs, err := agent.DaemonRead(target, readCount, download)
+					handled, msgs, err := daemonRead(target, readCount, download)
 					if handled {
 						if err != nil {
 							return err
@@ -69,12 +68,12 @@ func init() {
 					}
 				}
 				if message != "" && !waitForReply {
-					handled, _, _, err := agent.DaemonSend(target, message)
+					handled, _, _, err := daemonSend(target, message)
 					if handled {
 						return err
 					}
 				} else {
-					handled, reply, err := agent.DaemonChatWait(target, message, timeout)
+					handled, reply, err := daemonChatWait(target, message, timeout)
 					if handled {
 						if err != nil {
 							return err

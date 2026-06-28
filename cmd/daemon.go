@@ -2,8 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 
-	"github.com/Zouriel/zcoms/internal/agent"
+	"github.com/Zouriel/zcoms/client"
+	"github.com/Zouriel/zcoms/internal/comms/contacts"
+	"github.com/Zouriel/zcoms/internal/comms/hub"
 	"github.com/Zouriel/zcoms/internal/comms/telegram"
 
 	"github.com/spf13/cobra"
@@ -17,38 +20,27 @@ func init() {
 
 	agentCommand := &cobra.Command{
 		Use:   "agent",
-		Short: "Run the agent bridge: let allow-listed Telegram users drive AI agent sessions",
-		Long: "Listens on the logged-in Telegram account for messages from allow-listed\n" +
-			"users and drives an AI agent (Claude Code or Codex) on their behalf: pick a\n" +
-			"location, resume a session with a summary, chat back and forth. Configure with\n" +
-			"agent-locations.json and agent-allowlist.json in the zcoms config dir.",
+		Short: "Run the comms daemon (owns the Telegram session; serves the IPC socket)",
+		Long: "Owns the single TDLib Telegram session and serves it to the agent tier and\n" +
+			"modules over the IPC socket: send/ask/read/unread/mark_read/resolve, the\n" +
+			"contacts directory, and a subscribe stream of incoming 1:1 messages. The AI\n" +
+			"agent itself runs in the separate `zcoms-agent` process — install it with\n" +
+			"`zc install agent`.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			apiID, apiHash, err := resolveTelegramCredentials()
 			if err != nil {
 				return err
 			}
 
-			locations, locPath, err := agent.LoadOrSeedLocations()
+			dir, err := client.DefaultAppDir()
 			if err != nil {
 				return err
 			}
-			allow, allowPath, err := agent.LoadOrSeedAllowlist()
+			store, err := contacts.Open(filepath.Join(dir, "comms.db"))
 			if err != nil {
-				return err
+				return fmt.Errorf("opening contacts store: %w", err)
 			}
-			settings, settingsPath, err := agent.LoadOrSeedSettings()
-			if err != nil {
-				return err
-			}
-			agents, agentsPath, err := agent.LoadOrSeedAgents()
-			if err != nil {
-				return err
-			}
-
-			fmt.Println("locations:", locPath)
-			fmt.Println("allowlist:", allowPath)
-			fmt.Println("settings: ", settingsPath)
-			fmt.Println("agents:   ", agentsPath)
+			defer store.Close()
 
 			tdjson, clientID, err := startTDLibClient()
 			if err != nil {
@@ -70,7 +62,7 @@ func init() {
 				}
 			}
 
-			return agent.RunDaemon(tdjson, clientID, locations, allow, settings, agents)
+			return hub.RunDaemon(tdjson, clientID, store)
 		},
 	}
 

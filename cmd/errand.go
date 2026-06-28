@@ -4,13 +4,20 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Zouriel/zcoms/internal/agent"
+	"github.com/Zouriel/zcoms/client"
 
 	"github.com/spf13/cobra"
 )
 
 // errandUnavailable is shown when the errands component isn't running.
-const errandUnavailable = "the errands component isn't running — install/start it with `zc install errands`"
+const errandUnavailable = "the agent isn't running — install it with `zc install agent`"
+
+// errandsCommand forwards an errand command line to the agent (errands fold into
+// the agent tier). handled is false when the agent socket isn't listening.
+func errandsCommand(cmdline string) (handled bool, reply string, err error) {
+	res, err := client.ModuleCommand("agent.sock", cmdline, "")
+	return res.Running, res.Reply, err
+}
 
 func init() {
 	errandCommand := &cobra.Command{
@@ -43,7 +50,7 @@ func init() {
 				cmdline += "go "
 			}
 			cmdline += target + " | " + brief
-			handled, reply, err := agent.ErrandsCommand(cmdline)
+			handled, reply, err := errandsCommand(cmdline)
 			if !handled {
 				return fmt.Errorf(errandUnavailable)
 			}
@@ -79,7 +86,7 @@ func init() {
 				cmdline += "go "
 			}
 			cmdline += target + " at " + when + " | " + brief
-			handled, reply, err := agent.ErrandsCommand(cmdline)
+			handled, reply, err := errandsCommand(cmdline)
 			if !handled {
 				return fmt.Errorf(errandUnavailable)
 			}
@@ -97,7 +104,7 @@ func init() {
 		Use:   "scheduled",
 		Short: "List errands queued to fire at a future time",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			handled, reply, err := agent.ErrandsCommand("errand scheduled")
+			handled, reply, err := errandsCommand("errand scheduled")
 			if !handled {
 				return fmt.Errorf(errandUnavailable)
 			}
@@ -114,7 +121,7 @@ func init() {
 		Short: "Cancel a scheduled errand before it fires",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			handled, reply, err := agent.ErrandsCommand("errand unschedule " + args[0])
+			handled, reply, err := errandsCommand("errand unschedule " + args[0])
 			if !handled {
 				return fmt.Errorf(errandUnavailable)
 			}
@@ -130,7 +137,7 @@ func init() {
 		Use:   "list",
 		Short: "List active errands",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			handled, reply, err := agent.ErrandsCommand("errand list")
+			handled, reply, err := errandsCommand("errand list")
 			if !handled {
 				return fmt.Errorf(errandUnavailable)
 			}
@@ -147,7 +154,7 @@ func init() {
 		Short: "Cancel an errand (the contact stops being messaged)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			handled, reply, err := agent.ErrandsCommand("errand cancel " + args[0])
+			handled, reply, err := errandsCommand("errand cancel " + args[0])
 			if !handled {
 				return fmt.Errorf(errandUnavailable)
 			}

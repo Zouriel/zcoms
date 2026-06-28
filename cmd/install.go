@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Zouriel/zcoms/internal/agent"
 	"github.com/Zouriel/zcoms/internal/components"
 
 	"github.com/spf13/cobra"
@@ -216,50 +215,17 @@ func deactivateComponent(c components.Name) {
 	}
 }
 
-// seedComponent makes sure a component's config files exist (and flips on the
-// features it owns) so it works the moment the daemon restarts.
+// seedComponent is a no-op for the agent-tier components: the agent owns its own
+// config in agent.db and seeds/migrates it on first run (importing any legacy
+// JSON). Comms no longer reads or writes agent config.
 func seedComponent(name components.Name) error {
-	switch name {
-	case components.Bridge:
-		if _, _, err := agent.LoadOrSeedAllowlist(); err != nil {
-			return err
-		}
-		if _, _, err := agent.LoadOrSeedLocations(); err != nil {
-			return err
-		}
-		if _, _, err := agent.LoadOrSeedAgents(); err != nil {
-			return err
-		}
-		if _, _, err := agent.LoadOrSeedSettings(); err != nil {
-			return err
-		}
-	case components.Triage:
-		s, _, err := agent.LoadOrSeedSettings()
-		if err != nil {
-			return err
-		}
-		s.Triage.Enabled = true
-		if s.Triage.Schedule == "" && s.Triage.EveryMinutes == 0 {
-			s.Triage.Schedule = "1h"
-		}
-		if _, err := agent.SaveSettings(s); err != nil {
-			return err
-		}
-	case components.Errands:
-		if _, _, err := agent.LoadOrSeedAgents(); err != nil {
-			return err
-		}
-	}
+	_ = name
 	return nil
 }
 
-// disableTriage turns the triage schedule off when triage is uninstalled.
-func disableTriage() {
-	if s, _, err := agent.LoadOrSeedSettings(); err == nil {
-		s.Triage.Enabled = false
-		_, _ = agent.SaveSettings(s)
-	}
-}
+// disableTriage is a no-op: the triage schedule lives in agent.db now and is
+// managed by the agent (`zc agent triage off`), not the comms installer.
+func disableTriage() {}
 
 func printPostInstallHints(installed []components.Name) {
 	for _, c := range installed {

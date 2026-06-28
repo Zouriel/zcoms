@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Zouriel/zcoms/internal/agent"
 	"github.com/Zouriel/zcoms/internal/comms/telegram"
 
 	"github.com/spf13/cobra"
@@ -24,7 +23,7 @@ func init() {
 
 			// If the bridge daemon is running, route through it (it owns the
 			// session); otherwise talk to Telegram directly.
-			if handled, msgID, chatID, err := agent.DaemonSend(username, message); handled {
+			if handled, msgID, chatID, err := daemonSend(username, message); handled {
 				if err != nil {
 					return err
 				}

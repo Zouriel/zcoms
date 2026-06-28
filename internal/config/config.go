@@ -18,6 +18,17 @@ type Config struct {
 	AuthState   string `json:"auth_state"`
 	Username    string `json:"username,omitempty"`
 	PhoneNumber string `json:"phone_number,omitempty"`
+
+	// WhatsApp is the optional Baileys sidecar transport. It lives in comms
+	// config because WhatsApp is a transport, not an AI concern — the agent tier
+	// reaches it through comms like any other channel.
+	WhatsApp WhatsAppConfig `json:"whatsapp"`
+}
+
+// WhatsAppConfig configures the Baileys sidecar (the second comms transport).
+type WhatsAppConfig struct {
+	Enabled bool   `json:"enabled"`
+	Socket  string `json:"socket"` // path to the sidecar's Unix socket
 }
 
 func DefaultAppDir() (string, error) {
@@ -90,6 +101,10 @@ func applyDefaults(configuration Config, appDirectory string) Config {
 
 	if configuration.AuthState == "" {
 		configuration.AuthState = AuthStateUnauthorized
+	}
+
+	if configuration.WhatsApp.Socket == "" {
+		configuration.WhatsApp.Socket = filepath.Join(appDirectory, "wa.sock")
 	}
 
 	return configuration

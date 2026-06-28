@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Zouriel/zcoms/internal/agent"
 	"github.com/Zouriel/zcoms/internal/comms/telegram"
 
 	"github.com/spf13/cobra"
@@ -23,7 +22,7 @@ func init() {
 			caption := strings.Join(args[2:], " ")
 
 			// Route through the daemon if it's running (it owns the session).
-			if handled, label, chatID, err := agent.DaemonSendFile(target, path, caption); handled {
+			if handled, label, chatID, err := daemonSendFile(target, path, caption); handled {
 				if err != nil {
 					return err
 				}

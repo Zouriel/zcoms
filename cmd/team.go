@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Zouriel/zcoms/internal/agent"
+	"github.com/Zouriel/zcoms/client"
 
 	"github.com/spf13/cobra"
 )
@@ -27,14 +27,14 @@ func init() {
 			if actor != "" && !strings.HasPrefix(actor, "@") {
 				actor = "@" + actor
 			}
-			handled, reply, err := agent.ComponentCommand("team.sock", text, actor)
-			if !handled {
+			res, err := client.ModuleCommand("team.sock", text, actor)
+			if !res.Running {
 				return fmt.Errorf("the team component isn't running — install it with `zc install team`")
 			}
 			if err != nil {
 				return err
 			}
-			fmt.Println(reply)
+			fmt.Println(res.Reply)
 			return nil
 		},
 	}

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Zouriel/zcoms/internal/agent"
 	"github.com/Zouriel/zcoms/internal/comms/telegram"
 
 	"github.com/spf13/cobra"
@@ -24,7 +23,7 @@ func init() {
 
 			// Route through the bridge daemon if it's running (it owns the
 			// session and will block for the user's reply, same as below).
-			if handled, reply, err := agent.DaemonAsk(username, message); handled {
+			if handled, reply, err := daemonAsk(username, message); handled {
 				if err != nil {
 					return err
 				}

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Zouriel/zcoms/internal/agent"
 	"github.com/Zouriel/zcoms/internal/comms/whatsapp"
 
 	"github.com/spf13/cobra"
@@ -32,14 +31,10 @@ func waJID(to string) string {
 
 // waSocket returns the configured sidecar socket, erroring if WhatsApp is off.
 func waSocket() (string, error) {
-	s, _, err := agent.LoadOrSeedSettings()
-	if err != nil {
-		return "", err
+	if !AppConfig.WhatsApp.Enabled {
+		return "", fmt.Errorf("WhatsApp is off — enable it in config.json (whatsapp.enabled) and run the sidecar")
 	}
-	if !s.WhatsApp.Enabled {
-		return "", fmt.Errorf("WhatsApp is off — enable it in agent-settings.json (and run the sidecar)")
-	}
-	return s.WhatsApp.Socket, nil
+	return AppConfig.WhatsApp.Socket, nil
 }
 
 func init() {
@@ -55,22 +50,17 @@ func init() {
 		Use:   "status",
 		Short: "Ping the WhatsApp sidecar and report paired/connected state",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			s, _, err := agent.LoadOrSeedSettings()
-			if err != nil {
-				return err
-			}
-
 			enabled := "off"
-			if s.WhatsApp.Enabled {
+			if AppConfig.WhatsApp.Enabled {
 				enabled = "on"
 			}
 			fmt.Printf("WhatsApp: %s\n", enabled)
-			fmt.Printf("Socket:   %s\n", s.WhatsApp.Socket)
-			if !s.WhatsApp.Enabled {
-				fmt.Println("(Enable it in agent-settings.json and run the sidecar to use it.)")
+			fmt.Printf("Socket:   %s\n", AppConfig.WhatsApp.Socket)
+			if !AppConfig.WhatsApp.Enabled {
+				fmt.Println("(Enable it in config.json (whatsapp.enabled) and run the sidecar to use it.)")
 			}
 
-			st, err := whatsapp.Ping(s.WhatsApp.Socket)
+			st, err := whatsapp.Ping(AppConfig.WhatsApp.Socket)
 			if err != nil {
 				fmt.Printf("Sidecar:  unreachable (%v)\n", err)
 				return nil // not an error condition for a status probe
