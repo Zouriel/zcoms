@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Zouriel/zcoms/internal/tdlib"
-	"github.com/Zouriel/zcoms/internal/whatsapp"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
+	"github.com/Zouriel/zcoms/internal/comms/whatsapp"
 )
 
 // sendDirective matches a single reply instruction emitted by the interactive
@@ -94,7 +94,7 @@ func (d *daemon) runTriageReads(reads []readRequest) string {
 			fmt.Fprintf(&b, "READ %s — couldn't resolve: %v\n\n", r.Target, err)
 			continue
 		}
-		history, err := tdlib.FetchChatHistorySnapshot(d.tdjson, d.clientID, chatID, r.Count)
+		history, err := telegram.FetchChatHistorySnapshot(d.tdjson, d.clientID, chatID, r.Count)
 		if err != nil {
 			fmt.Fprintf(&b, "READ %s — couldn't read: %v\n\n", r.Target, err)
 			continue
@@ -249,7 +249,7 @@ func (d *daemon) sendFileTo(byIndex map[int]Recipient, target, path, caption str
 				}
 				return fmt.Sprintf("✅ Sent file to %s (WhatsApp)", rec.Name)
 			}
-			if _, label, err := tdlib.SendLocalFileMessage(d.tdjson, d.clientID, rec.TGChat, full, caption); err != nil {
+			if _, label, err := telegram.SendLocalFileMessage(d.tdjson, d.clientID, rec.TGChat, full, caption); err != nil {
 				return fmt.Sprintf("⚠️ Couldn't send file to %s: %v", rec.Name, err)
 			} else {
 				return fmt.Sprintf("✅ Sent %s to %s (Telegram)", label, rec.Name)
@@ -261,7 +261,7 @@ func (d *daemon) sendFileTo(byIndex map[int]Recipient, target, path, caption str
 	if err != nil {
 		return fmt.Sprintf("⚠️ Couldn't resolve %q: %v", target, err)
 	}
-	_, label, err := tdlib.SendLocalFileMessage(d.tdjson, d.clientID, chat, full, caption)
+	_, label, err := telegram.SendLocalFileMessage(d.tdjson, d.clientID, chat, full, caption)
 	if err != nil {
 		return fmt.Sprintf("⚠️ Couldn't send file to %s: %v", target, err)
 	}

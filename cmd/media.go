@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
 )
 
 const mediaDownloadTimeout = 30 * time.Minute
@@ -104,18 +104,18 @@ func copyFile(sourcePath, destinationPath string) error {
 // non-media messages. TDLib keeps the original in its own cache; we copy out so
 // the file survives cache cleanup and lives in a predictable place.
 func downloadIncomingMedia(
-	tdjson *tdlib.TDJSON,
+	tdjson *telegram.TDJSON,
 	clientID int32,
 	chatTitle string,
 	chatID int64,
-	content tdlib.Content,
+	content telegram.Content,
 ) (savedPath string, label string, ok bool, err error) {
 	file, fileName, label, isMedia := content.MediaFile()
 	if !isMedia {
 		return "", label, false, nil
 	}
 
-	localPath, err := tdlib.DownloadFile(tdjson, clientID, file.ID, mediaDownloadTimeout)
+	localPath, err := telegram.DownloadFile(tdjson, clientID, file.ID, mediaDownloadTimeout)
 	if err != nil {
 		return "", label, true, err
 	}

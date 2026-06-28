@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
 )
 
 // routeToErrands marks an incoming claimed-chat message read and pushes it to
 // the errands component as an event (downloading any attachment first).
-func (d *daemon) routeToErrands(msg tdlib.Message) {
-	_ = tdlib.MarkMessagesRead(d.tdjson, d.clientID, msg.ChatID, []int64{msg.ID})
+func (d *daemon) routeToErrands(msg telegram.Message) {
+	_ = telegram.MarkMessagesRead(d.tdjson, d.clientID, msg.ChatID, []int64{msg.ID})
 	ev := ipcEvent{
 		Event:     "message",
 		ChatID:    msg.ChatID,
@@ -32,8 +32,8 @@ func (d *daemon) routeToErrands(msg tdlib.Message) {
 
 // routeToBridge marks an allow-listed user's message read and pushes it to the
 // external bridge component (downloading any attachment first).
-func (d *daemon) routeToBridge(st *userState, msg tdlib.Message) {
-	_ = tdlib.MarkMessagesRead(d.tdjson, d.clientID, msg.ChatID, []int64{msg.ID})
+func (d *daemon) routeToBridge(st *userState, msg telegram.Message) {
+	_ = telegram.MarkMessagesRead(d.tdjson, d.clientID, msg.ChatID, []int64{msg.ID})
 	ev := ipcEvent{
 		Event:     "message",
 		ChatID:    msg.ChatID,

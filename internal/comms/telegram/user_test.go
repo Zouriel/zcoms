@@ -1,4 +1,4 @@
-package tdlib
+package telegram
 
 import "testing"
 

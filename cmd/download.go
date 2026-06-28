@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
 
 	"github.com/spf13/cobra"
 )
@@ -24,7 +24,7 @@ type mediaItem struct {
 	Size      int64  `json:"size"`
 	Caption   string `json:"caption"`
 
-	content tdlib.Content
+	content telegram.Content
 }
 
 func init() {
@@ -67,7 +67,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			chatTitle, _ := tdlib.FetchChatTitle(tdjson, clientID, chatID)
+			chatTitle, _ := telegram.FetchChatTitle(tdjson, clientID, chatID)
 
 			items, err := collectRecentMedia(tdjson, clientID, chatID, limit)
 			if err != nil {
@@ -131,8 +131,8 @@ func init() {
 	tgCmd.AddCommand(downloadCommand)
 }
 
-func collectRecentMedia(tdjson *tdlib.TDJSON, clientID int32, chatID int64, limit int) ([]mediaItem, error) {
-	history, err := tdlib.FetchChatHistory(tdjson, clientID, chatID, limit)
+func collectRecentMedia(tdjson *telegram.TDJSON, clientID int32, chatID int64, limit int) ([]mediaItem, error) {
+	history, err := telegram.FetchChatHistory(tdjson, clientID, chatID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +161,7 @@ func collectRecentMedia(tdjson *tdlib.TDJSON, clientID int32, chatID int64, limi
 	return items, nil
 }
 
-func downloadMediaItem(tdjson *tdlib.TDJSON, clientID int32, chatTitle string, chatID int64, item mediaItem) error {
+func downloadMediaItem(tdjson *telegram.TDJSON, clientID int32, chatTitle string, chatID int64, item mediaItem) error {
 	fmt.Printf("Downloading %s (%s)...\n", item.Kind, item.FileName)
 	savedPath, label, ok, err := downloadIncomingMedia(tdjson, clientID, chatTitle, chatID, item.content)
 	if !ok {

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Zouriel/zcoms/internal/tdlib"
-	"github.com/Zouriel/zcoms/internal/whatsapp"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
+	"github.com/Zouriel/zcoms/internal/comms/whatsapp"
 )
 
 // errandPollInterval is how often the daemon checks WhatsApp for replies to
@@ -42,7 +42,7 @@ func (d *daemon) activeErrandForWA(jid string) *Errand {
 
 // routeTGErrandReply feeds a Telegram message into its errand: dedupe, mark
 // read, download any attachment, and advance the errand.
-func (d *daemon) routeTGErrandReply(e *Errand, msg tdlib.Message) {
+func (d *daemon) routeTGErrandReply(e *Errand, msg telegram.Message) {
 	id := strconv.FormatInt(msg.ID, 10)
 	d.mu.Lock()
 	fresh := e.markSeen(id)
@@ -52,7 +52,7 @@ func (d *daemon) routeTGErrandReply(e *Errand, msg tdlib.Message) {
 	}
 	_ = SaveErrand(e)
 
-	if err := tdlib.MarkMessagesRead(d.tdjson, d.clientID, msg.ChatID, []int64{msg.ID}); err != nil {
+	if err := telegram.MarkMessagesRead(d.tdjson, d.clientID, msg.ChatID, []int64{msg.ID}); err != nil {
 		fmt.Printf("[errand %s] couldn't mark read: %v\n", e.ID, err)
 	}
 

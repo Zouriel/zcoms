@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Zouriel/zcoms/internal/components"
-	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
 )
 
 const telegramMaxLen = 4000
@@ -50,7 +50,7 @@ type userState struct {
 }
 
 type daemon struct {
-	tdjson    *tdlib.TDJSON
+	tdjson    *telegram.TDJSON
 	clientID  int32
 	locations Locations
 	settings  Settings
@@ -90,7 +90,7 @@ type daemon struct {
 
 // RunDaemon resolves the allow-list, greets each member, then services incoming
 // messages until interrupted.
-func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow Allowlist, settings Settings, agents AgentConfig) error {
+func RunDaemon(tdjson *telegram.TDJSON, clientID int32, locations Locations, allow Allowlist, settings Settings, agents AgentConfig) error {
 	d := &daemon{
 		tdjson:         tdjson,
 		clientID:       clientID,
@@ -132,9 +132,9 @@ func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow 
 
 	// Resolve the main user (for triage digests).
 	if settings.MainUser != "" && settings.MainUser != "@your_username" {
-		if uid, err := tdlib.ResolveUserIdentifierByUsername(tdjson, clientID, settings.MainUser); err == nil {
+		if uid, err := telegram.ResolveUserIdentifierByUsername(tdjson, clientID, settings.MainUser); err == nil {
 			d.mainUserID = uid
-			if cid, err := tdlib.CreatePrivateChat(tdjson, clientID, uid); err == nil {
+			if cid, err := telegram.CreatePrivateChat(tdjson, clientID, uid); err == nil {
 				d.mainChatID = cid
 			} else {
 				d.mainChatID = uid
@@ -144,12 +144,12 @@ func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow 
 
 	resolved := 0
 	for username, entry := range allow {
-		userID, err := tdlib.ResolveUserIdentifierByUsername(tdjson, clientID, username)
+		userID, err := telegram.ResolveUserIdentifierByUsername(tdjson, clientID, username)
 		if err != nil {
 			fmt.Printf("  ! could not resolve %s: %v (skipping)\n", username, err)
 			continue
 		}
-		chatID, err := tdlib.CreatePrivateChat(tdjson, clientID, userID)
+		chatID, err := telegram.CreatePrivateChat(tdjson, clientID, userID)
 		if err != nil {
 			chatID = userID // private chat id == user id in TDLib
 		}
@@ -191,7 +191,7 @@ func RunDaemon(tdjson *tdlib.TDJSON, clientID int32, locations Locations, allow 
 	// claimed chats to it (see routeToErrands) and serves its IPC.
 
 	for {
-		updateJSON, err := tdlib.ReceiveUpdates(tdjson)
+		updateJSON, err := telegram.ReceiveUpdates(tdjson)
 		if err != nil || updateJSON == "" {
 			continue
 		}
@@ -211,15 +211,15 @@ func (d *daemon) dispatchUpdate(updateJSON string) {
 	// If Telegram logs this session out remotely, keep config.json honest so the
 	// auth_state field doesn't stay "authorized" forever (the daemon can't run
 	// `zc tg logout`, which is what would normally reset it).
-	if state, ok := tdlib.ParseUpdateAuthorizationState(updateJSON); ok {
-		if state == tdlib.AuthStateLoggingOut || state == tdlib.AuthStateClosed {
+	if state, ok := telegram.ParseUpdateAuthorizationState(updateJSON); ok {
+		if state == telegram.AuthStateLoggingOut || state == telegram.AuthStateClosed {
 			fmt.Printf("[bridge] ⚠️ Telegram session %s — marking config unauthorized; the daemon needs `zc tg login` (stop it first).\n", state)
 			markConfigUnauthorized()
 		}
 		return
 	}
 
-	u, ok := tdlib.ParseUpdateNewMessage(updateJSON)
+	u, ok := telegram.ParseUpdateNewMessage(updateJSON)
 	if !ok || u.Message.IsOutgoing {
 		return
 	}
@@ -281,7 +281,7 @@ func (d *daemon) dispatchUpdate(updateJSON string) {
 	// Mark the owner's incoming message read immediately so the bridge chat never
 	// accumulates unread — covers every allow-listed mode (chat, interact triage,
 	// commands, files) since they all flow through here.
-	if err := tdlib.MarkMessagesRead(d.tdjson, d.clientID, u.Message.ChatID, []int64{u.Message.ID}); err != nil {
+	if err := telegram.MarkMessagesRead(d.tdjson, d.clientID, u.Message.ChatID, []int64{u.Message.ID}); err != nil {
 		fmt.Printf("[bridge] couldn't mark message read: %v\n", err)
 	}
 
@@ -775,7 +775,7 @@ func (d *daemon) send(chatID int64, text string) {
 // must be confirmed before acting, e.g. before marking triaged messages read).
 func (d *daemon) sendErr(chatID int64, text string) error {
 	for _, part := range chunk(text, telegramMaxLen) {
-		if _, err := tdlib.SendTextMessage(d.tdjson, d.clientID, chatID, part); err != nil {
+		if _, err := telegram.SendTextMessage(d.tdjson, d.clientID, chatID, part); err != nil {
 			return err
 		}
 	}

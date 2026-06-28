@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
 )
 
 // uploadsSubdir is where files sent through the bridge are saved, inside the
@@ -18,7 +18,7 @@ const uploadsSubdir = "zcoms-uploads"
 // project and remembers it. Saving doesn't depend on the agent, so this works
 // even while a run is in flight — the file is attached to the user's next turn
 // (or run immediately if there's a caption and the agent is free).
-func (d *daemon) handleIncomingFile(st *userState, msg tdlib.Message) {
+func (d *daemon) handleIncomingFile(st *userState, msg telegram.Message) {
 	file, fileName, label, ok := msg.Content.MediaFile()
 	if !ok {
 		d.send(st.chatID, "I can only handle text and files here.")
@@ -40,7 +40,7 @@ func (d *daemon) handleIncomingFile(st *userState, msg tdlib.Message) {
 	d.send(chatID, "📎 Downloading "+fileName+"…")
 
 	go func() {
-		localPath, err := tdlib.DownloadFile(d.tdjson, d.clientID, file.ID, 10*time.Minute)
+		localPath, err := telegram.DownloadFile(d.tdjson, d.clientID, file.ID, 10*time.Minute)
 		if err != nil {
 			d.send(chatID, "⚠️ Couldn't download the file: "+err.Error())
 			return

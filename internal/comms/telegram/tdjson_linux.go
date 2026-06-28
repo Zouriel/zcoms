@@ -1,6 +1,6 @@
 //go:build linux
 
-package tdlib
+package telegram
 
 /*
 #cgo LDFLAGS: -ldl

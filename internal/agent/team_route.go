@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
 )
 
 func isTeamCommand(text string) bool {
@@ -37,7 +37,7 @@ func (d *daemon) shouldRouteTeam(userID int64, text string) bool {
 	return inSession || isTeamCommand(text)
 }
 
-func (d *daemon) routeToTeam(msg tdlib.Message, text string) {
+func (d *daemon) routeToTeam(msg telegram.Message, text string) {
 	actor := d.telegramActor(msg.SenderID.UserID)
 	reply, cont, err := d.teamCommand(text, actor)
 	if err != nil {
@@ -49,7 +49,7 @@ func (d *daemon) routeToTeam(msg tdlib.Message, text string) {
 	if reply != "" {
 		d.send(msg.ChatID, reply)
 	}
-	if err := tdlib.MarkMessagesRead(d.tdjson, d.clientID, msg.ChatID, []int64{msg.ID}); err != nil {
+	if err := telegram.MarkMessagesRead(d.tdjson, d.clientID, msg.ChatID, []int64{msg.ID}); err != nil {
 		fmt.Printf("[team] couldn't mark message read: %v\n", err)
 	}
 }
@@ -65,7 +65,7 @@ func (d *daemon) setTeamSession(userID int64, on bool) {
 }
 
 func (d *daemon) telegramActor(userID int64) string {
-	if user, err := tdlib.FetchUser(d.tdjson, d.clientID, userID); err == nil {
+	if user, err := telegram.FetchUser(d.tdjson, d.clientID, userID); err == nil {
 		if username := strings.TrimSpace(user.Username); username != "" {
 			return "@" + strings.TrimPrefix(username, "@")
 		}

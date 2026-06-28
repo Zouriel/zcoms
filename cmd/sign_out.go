@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Zouriel/zcoms/internal/config"
-	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
 
 	"github.com/spf13/cobra"
 )
@@ -39,36 +39,36 @@ func init() {
 }
 
 func executeSignOut(hardSignOut bool) (string, string, error) {
-	tdjson, loadError := tdlib.LoadTDJSON()
+	tdjson, loadError := telegram.LoadTDJSON()
 	if loadError != nil {
 		return "", "", loadError
 	}
 	defer tdjson.Close()
 
-	tdlib.ConfigureLogging(tdjson)
+	telegram.ConfigureLogging(tdjson)
 	clientID := tdjson.CreateClientID()
 
-	state, err := tdlib.FetchAuthorizationState(tdjson, clientID)
+	state, err := telegram.FetchAuthorizationState(tdjson, clientID)
 	if err != nil {
 		if strings.Contains(err.Error(), "Initialization parameters are needed") {
-			state = tdlib.AuthStateWaitTdlibParameters
+			state = telegram.AuthStateWaitTdlibParameters
 		} else {
 			return "", "", err
 		}
 	}
 
-	if state == tdlib.AuthStateWaitTdlibParameters {
+	if state == telegram.AuthStateWaitTdlibParameters {
 		apiID, apiHash, credErr := config.ResolveAPICredentials()
 		if credErr != nil {
 			return "", "", credErr
 		}
 
-		if err := tdlib.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
+		if err := telegram.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
 			return "", "", err
 		}
 	}
 
-	_ = tdlib.LogOutSession(tdjson, clientID)
+	_ = telegram.LogOutSession(tdjson, clientID)
 
 	waitError := waitUntilNotReady(tdjson, clientID, 5*time.Second)
 
@@ -111,12 +111,12 @@ func removeTdlibDirWithRetry(path string, attempts int, delay time.Duration) err
 	return lastErr
 }
 
-func waitUntilNotReady(tdjson *tdlib.TDJSON, clientID int32, timeout time.Duration) error {
+func waitUntilNotReady(tdjson *telegram.TDJSON, clientID int32, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 
 	for time.Now().Before(deadline) {
-		state, err := tdlib.FetchAuthorizationState(tdjson, clientID)
-		if err == nil && state != tdlib.AuthStateReady {
+		state, err := telegram.FetchAuthorizationState(tdjson, clientID)
+		if err == nil && state != telegram.AuthStateReady {
 			return nil
 		}
 		time.Sleep(300 * time.Millisecond)

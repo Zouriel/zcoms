@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
 
 	"github.com/spf13/cobra"
 )
@@ -37,15 +37,15 @@ func init() {
 			defer tdjson.Close()
 
 			for {
-				state, err := tdlib.FetchAuthorizationState(tdjson, clientID)
+				state, err := telegram.FetchAuthorizationState(tdjson, clientID)
 				if err != nil {
 					return err
 				}
-				if state == tdlib.AuthStateReady {
+				if state == telegram.AuthStateReady {
 					break
 				}
-				if state == tdlib.AuthStateWaitTdlibParameters {
-					if err := tdlib.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
+				if state == telegram.AuthStateWaitTdlibParameters {
+					if err := telegram.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
 						return err
 					}
 				}
@@ -56,7 +56,7 @@ func init() {
 				limit = 20
 			}
 
-			chatIDs, err := tdlib.FetchChatIdentifiers(tdjson, clientID, limit)
+			chatIDs, err := telegram.FetchChatIdentifiers(tdjson, clientID, limit)
 			if err != nil {
 				return err
 			}
@@ -66,7 +66,7 @@ func init() {
 
 			if jsonOutput {
 				for i, id := range chatIDs {
-					title, _ := tdlib.FetchChatTitle(tdjson, clientID, id)
+					title, _ := telegram.FetchChatTitle(tdjson, clientID, id)
 					b, err := json.Marshal(struct {
 						Index  int    `json:"index"`
 						ChatID int64  `json:"chat_id"`
@@ -81,7 +81,7 @@ func init() {
 
 			fmt.Println("Select a chat:")
 			for i, id := range chatIDs {
-				title, _ := tdlib.FetchChatTitle(tdjson, clientID, id)
+				title, _ := telegram.FetchChatTitle(tdjson, clientID, id)
 				fmt.Printf("[%d] %s  (chat_id=%d)\n", i, title, id)
 			}
 

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Zouriel/zcoms/internal/agent"
-	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
 
 	"github.com/spf13/cobra"
 )
@@ -46,11 +46,11 @@ func init() {
 			defer tdjson.Close()
 
 			for {
-				state, stateErr := tdlib.FetchAuthorizationState(tdjson, clientID)
+				state, stateErr := telegram.FetchAuthorizationState(tdjson, clientID)
 				if stateErr != nil {
 					if strings.Contains(stateErr.Error(), "Initialization parameters are needed") ||
 						strings.Contains(stateErr.Error(), "Request aborted") {
-						if err := tdlib.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
+						if err := telegram.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
 							return err
 						}
 						time.Sleep(200 * time.Millisecond)
@@ -60,39 +60,39 @@ func init() {
 				}
 
 				switch state {
-				case tdlib.AuthStateWaitTdlibParameters:
-					if err := tdlib.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
+				case telegram.AuthStateWaitTdlibParameters:
+					if err := telegram.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
 						return err
 					}
 
-				case tdlib.AuthStateWaitPhoneNumber:
+				case telegram.AuthStateWaitPhoneNumber:
 					phone, err := promptLine(consoleReader, "Phone number (+countrycode...): ")
 					if err != nil {
 						return err
 					}
-					if err := tdlib.ProvideAuthenticationPhoneNumber(tdjson, clientID, phone); err != nil {
+					if err := telegram.ProvideAuthenticationPhoneNumber(tdjson, clientID, phone); err != nil {
 						return err
 					}
 
-				case tdlib.AuthStateWaitCode:
+				case telegram.AuthStateWaitCode:
 					code, err := promptLine(consoleReader, "Telegram code: ")
 					if err != nil {
 						return err
 					}
-					if err := tdlib.SubmitAuthenticationCode(tdjson, clientID, code); err != nil {
+					if err := telegram.SubmitAuthenticationCode(tdjson, clientID, code); err != nil {
 						return err
 					}
 
-				case tdlib.AuthStateWaitPassword:
+				case telegram.AuthStateWaitPassword:
 					pass, err := promptHidden("2FA password: ")
 					if err != nil {
 						return err
 					}
-					if err := tdlib.SubmitAuthenticationPassword(tdjson, clientID, pass); err != nil {
+					if err := telegram.SubmitAuthenticationPassword(tdjson, clientID, pass); err != nil {
 						return err
 					}
 
-				case tdlib.AuthStateReady:
+				case telegram.AuthStateReady:
 					goto AUTHED
 
 				default:
@@ -102,17 +102,17 @@ func init() {
 			}
 
 		AUTHED:
-			userID, err := tdlib.ResolveUserIdentifierByUsername(tdjson, clientID, username)
+			userID, err := telegram.ResolveUserIdentifierByUsername(tdjson, clientID, username)
 			if err != nil {
 				return err
 			}
 
-			chatID, err := tdlib.CreatePrivateChat(tdjson, clientID, userID)
+			chatID, err := telegram.CreatePrivateChat(tdjson, clientID, userID)
 			if err != nil {
 				return err
 			}
 
-			msgID, err := tdlib.SendTextMessage(tdjson, clientID, chatID, message)
+			msgID, err := telegram.SendTextMessage(tdjson, clientID, chatID, message)
 			if err != nil {
 				return err
 			}

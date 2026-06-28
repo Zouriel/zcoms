@@ -1,6 +1,6 @@
 //go:build windows
 
-package tdlib
+package telegram
 
 import (
 	"errors"

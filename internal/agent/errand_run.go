@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Zouriel/zcoms/internal/tdlib"
-	"github.com/Zouriel/zcoms/internal/whatsapp"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
+	"github.com/Zouriel/zcoms/internal/comms/whatsapp"
 )
 
 // errandDirective matches one content-bearing action line. Which directives are
@@ -586,7 +586,7 @@ func (d *daemon) deliverToOwner(e *Errand, path, caption string) error {
 	if _, err := os.Stat(path); err != nil {
 		return err
 	}
-	_, _, err := tdlib.SendLocalFileMessage(d.tdjson, d.clientID, e.OwnerChat, path, caption)
+	_, _, err := telegram.SendLocalFileMessage(d.tdjson, d.clientID, e.OwnerChat, path, caption)
 	return err
 }
 
@@ -612,7 +612,7 @@ func (d *daemon) sendFileToErrandTarget(e *Errand, path, caption string) error {
 		}
 		return whatsapp.SendFile(d.settings.WhatsApp.Socket, e.WAChat, path, caption)
 	}
-	_, _, err := tdlib.SendLocalFileMessage(d.tdjson, d.clientID, e.TGChat, path, caption)
+	_, _, err := telegram.SendLocalFileMessage(d.tdjson, d.clientID, e.TGChat, path, caption)
 	return err
 }
 

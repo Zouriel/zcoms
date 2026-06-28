@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
 )
 
 // serveIPC opens the Unix socket that `zc tg send`/`zc tg ask` connect to so they can
@@ -76,7 +76,7 @@ func (d *daemon) handleIPC(conn net.Conn) {
 			writeIPC(conn, ipcResponse{Error: err.Error()})
 			return
 		}
-		msgID, err := tdlib.SendTextMessage(d.tdjson, d.clientID, chatID, req.Text)
+		msgID, err := telegram.SendTextMessage(d.tdjson, d.clientID, chatID, req.Text)
 		if err != nil {
 			writeIPC(conn, ipcResponse{Error: err.Error()})
 			return
@@ -93,7 +93,7 @@ func (d *daemon) handleIPC(conn net.Conn) {
 		// arrives as an unsolicited update that the daemon's main receive loop
 		// would consume, so waiting on it would race/hang. The daemon stays
 		// alive, so the upload finishes in the background regardless.
-		_, label, err := tdlib.SendLocalFileMessage(d.tdjson, d.clientID, chatID, req.Path, req.Text)
+		_, label, err := telegram.SendLocalFileMessage(d.tdjson, d.clientID, chatID, req.Path, req.Text)
 		if err != nil {
 			writeIPC(conn, ipcResponse{Error: err.Error()})
 			return
@@ -113,7 +113,7 @@ func (d *daemon) handleIPC(conn net.Conn) {
 		if count > maxIPCReadCount {
 			count = maxIPCReadCount // never let one read pull an unbounded history
 		}
-		history, err := tdlib.FetchChatHistorySnapshot(d.tdjson, d.clientID, chatID, count)
+		history, err := telegram.FetchChatHistorySnapshot(d.tdjson, d.clientID, chatID, count)
 		if err != nil {
 			writeIPC(conn, ipcResponse{Error: err.Error()})
 			return
@@ -140,7 +140,7 @@ func (d *daemon) handleIPC(conn net.Conn) {
 		}
 		// Empty text = `zc tg chat` "just listen" mode: don't send, only wait.
 		if req.Text != "" {
-			if _, err := tdlib.SendTextMessage(d.tdjson, d.clientID, chatID, req.Text); err != nil {
+			if _, err := telegram.SendTextMessage(d.tdjson, d.clientID, chatID, req.Text); err != nil {
 				writeIPC(conn, ipcResponse{Error: err.Error()})
 				return
 			}
@@ -193,7 +193,7 @@ func (d *daemon) handleIPC(conn net.Conn) {
 			writeIPC(conn, ipcResponse{Error: "mark_read needs chat_id and message_ids"})
 			return
 		}
-		if err := tdlib.MarkMessagesRead(d.tdjson, d.clientID, req.ChatID, req.MessageIDs); err != nil {
+		if err := telegram.MarkMessagesRead(d.tdjson, d.clientID, req.ChatID, req.MessageIDs); err != nil {
 			writeIPC(conn, ipcResponse{Error: err.Error()})
 			return
 		}
@@ -245,7 +245,7 @@ const maxIPCReadCount = 200
 
 // downloadMessageMedia downloads a message's attachment (if any) and returns its
 // local path within TDLib's cache, or "" when there's nothing to fetch / it failed.
-func (d *daemon) downloadMessageMedia(m tdlib.Message) string {
+func (d *daemon) downloadMessageMedia(m telegram.Message) string {
 	f, _, _, ok := m.Content.MediaFile()
 	if !ok || f.ID == 0 {
 		return ""
@@ -253,7 +253,7 @@ func (d *daemon) downloadMessageMedia(m tdlib.Message) string {
 	if f.Local.IsDownloadingCompleted && f.Local.Path != "" {
 		return f.Local.Path
 	}
-	path, err := tdlib.DownloadFile(d.tdjson, d.clientID, f.ID, 90*time.Second)
+	path, err := telegram.DownloadFile(d.tdjson, d.clientID, f.ID, 90*time.Second)
 	if err != nil {
 		return ""
 	}
@@ -264,7 +264,7 @@ func (d *daemon) downloadMessageMedia(m tdlib.Message) string {
 // resolving the sender's display name (users via the daemon's shared name cache,
 // chats via the per-request titleCache) and the media kind/label. When download
 // is set, an attachment is fetched and its local path included.
-func (d *daemon) buildIPCMessage(m tdlib.Message, titleCache map[int64]string, download bool) IPCMessage {
+func (d *daemon) buildIPCMessage(m telegram.Message, titleCache map[int64]string, download bool) IPCMessage {
 	sender := "unknown"
 	switch m.SenderID.Type {
 	case "messageSenderUser":
@@ -273,7 +273,7 @@ func (d *daemon) buildIPCMessage(m tdlib.Message, titleCache map[int64]string, d
 		cid := m.SenderID.ChatID
 		if cached, ok := titleCache[cid]; ok && cached != "" {
 			sender = cached
-		} else if title, err := tdlib.FetchChatTitle(d.tdjson, d.clientID, cid); err == nil && title != "" {
+		} else if title, err := telegram.FetchChatTitle(d.tdjson, d.clientID, cid); err == nil && title != "" {
 			titleCache[cid] = title
 			sender = title
 		} else {
@@ -313,11 +313,11 @@ func (d *daemon) resolveChat(to string) (chatID, userID int64, err error) {
 	if id, e := strconv.ParseInt(to, 10, 64); e == nil {
 		return id, id, nil // private chat id == user id in TDLib
 	}
-	uid, e := tdlib.ResolveUserIdentifierByUsername(d.tdjson, d.clientID, to)
+	uid, e := telegram.ResolveUserIdentifierByUsername(d.tdjson, d.clientID, to)
 	if e != nil {
 		return 0, 0, e
 	}
-	cid, e := tdlib.CreatePrivateChat(d.tdjson, d.clientID, uid)
+	cid, e := telegram.CreatePrivateChat(d.tdjson, d.clientID, uid)
 	if e != nil {
 		cid = uid
 	}
@@ -355,7 +355,7 @@ func (d *daemon) removePending(userID int64, ch chan string) {
 
 // replyText extracts a user's reply for `zc tg ask`, matching standalone behavior
 // (text, else caption, else a [type] tag for media).
-func replyText(c tdlib.Content) string {
+func replyText(c telegram.Content) string {
 	if c.Type == "messageText" {
 		return c.Text.Text
 	}

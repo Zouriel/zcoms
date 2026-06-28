@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Zouriel/zcoms/internal/agent"
-	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
 
 	"github.com/spf13/cobra"
 )
@@ -104,7 +104,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			chatTitle, _ := tdlib.FetchChatTitle(tdjson, clientID, chatID)
+			chatTitle, _ := telegram.FetchChatTitle(tdjson, clientID, chatID)
 
 			nameCache := map[int64]string{}
 			titleCache := map[int64]string{}
@@ -112,7 +112,7 @@ func init() {
 			// Snapshot mode: print the last N messages and exit, without opening
 			// the chat (no read receipts) — matches the daemon-routed read path.
 			if readCount > 0 {
-				history, err := tdlib.FetchChatHistorySnapshot(tdjson, clientID, chatID, readCount)
+				history, err := telegram.FetchChatHistorySnapshot(tdjson, clientID, chatID, readCount)
 				if err != nil {
 					return err
 				}
@@ -124,7 +124,7 @@ func init() {
 				return nil
 			}
 
-			selfUser, err := tdlib.FetchCurrentUser(tdjson, clientID)
+			selfUser, err := telegram.FetchCurrentUser(tdjson, clientID)
 			if err != nil {
 				return err
 			}
@@ -132,7 +132,7 @@ func init() {
 			startTime := time.Now().Unix()
 
 			if message != "" {
-				if _, err := tdlib.SendTextMessage(tdjson, clientID, chatID, message); err != nil {
+				if _, err := telegram.SendTextMessage(tdjson, clientID, chatID, message); err != nil {
 					return err
 				}
 				if !waitForReply {
@@ -150,12 +150,12 @@ func init() {
 					return fmt.Errorf("timed out after %s waiting for a reply", timeout)
 				}
 
-				updateJSON, err := tdlib.ReceiveUpdates(tdjson)
+				updateJSON, err := telegram.ReceiveUpdates(tdjson)
 				if err != nil || updateJSON == "" {
 					continue
 				}
 
-				u, ok := tdlib.ParseUpdateNewMessage(updateJSON)
+				u, ok := telegram.ParseUpdateNewMessage(updateJSON)
 				if !ok || u.Message.ChatID != chatID {
 					continue
 				}
@@ -192,7 +192,7 @@ func init() {
 	tgCmd.AddCommand(chatCommand)
 }
 
-func buildChatMessage(m tdlib.Message, sender, filePath string) chatMessage {
+func buildChatMessage(m telegram.Message, sender, filePath string) chatMessage {
 	kind := "text"
 	if m.Content.Type != "messageText" {
 		if _, _, label, isMedia := m.Content.MediaFile(); isMedia {

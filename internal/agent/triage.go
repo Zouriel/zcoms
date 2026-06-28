@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Zouriel/zcoms/internal/tdlib"
-	"github.com/Zouriel/zcoms/internal/whatsapp"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
+	"github.com/Zouriel/zcoms/internal/comms/whatsapp"
 )
 
 // triageMessage is one unread message from a non-allow-listed sender, on either
@@ -42,7 +42,7 @@ func triageTimeLabel(t time.Time) string {
 
 // handleNonAllowlisted auto-replies (at most hourly per sender) to a stranger.
 // Triage itself reads Telegram's unread state directly, so nothing is buffered.
-func (d *daemon) handleNonAllowlisted(msg tdlib.Message) {
+func (d *daemon) handleNonAllowlisted(msg telegram.Message) {
 	if msg.ChatID != msg.SenderID.UserID {
 		return // private chats only — never auto-reply into a group/channel
 	}
@@ -71,7 +71,7 @@ func (d *daemon) senderName(userID int64) string {
 	}
 	d.mu.Unlock()
 
-	name, err := tdlib.FetchUserDisplayName(d.tdjson, d.clientID, userID)
+	name, err := telegram.FetchUserDisplayName(d.tdjson, d.clientID, userID)
 	if err != nil || name == "" {
 		name = fmt.Sprintf("user:%d", userID)
 	}
@@ -123,7 +123,7 @@ func (d *daemon) collectUnreadTG() ([]triageMessage, readPlan) {
 	plan := readPlan{TG: map[int64][]int64{}, WA: map[string][]string{}}
 	owned := loadClaims() // chats an active errand owns — skip them
 
-	chatIDs, err := tdlib.FetchChatIdentifiers(d.tdjson, d.clientID, 80)
+	chatIDs, err := telegram.FetchChatIdentifiers(d.tdjson, d.clientID, 80)
 	if err != nil {
 		fmt.Printf("[triage] couldn't list chats: %v\n", err)
 		return nil, plan
@@ -142,7 +142,7 @@ func (d *daemon) collectUnreadTG() ([]triageMessage, readPlan) {
 		}
 		seen[cid] = true
 
-		info, err := tdlib.FetchChatInfo(d.tdjson, d.clientID, cid)
+		info, err := telegram.FetchChatInfo(d.tdjson, d.clientID, cid)
 		if err != nil || info.UnreadCount == 0 || info.TypeName != "private" {
 			continue
 		}
@@ -159,7 +159,7 @@ func (d *daemon) collectUnreadTG() ([]triageMessage, readPlan) {
 			continue // the errands component owns this conversation; don't triage it
 		}
 
-		unread, err := tdlib.FetchUnreadIncoming(d.tdjson, d.clientID, cid, info.LastReadInboxMessageID)
+		unread, err := telegram.FetchUnreadIncoming(d.tdjson, d.clientID, cid, info.LastReadInboxMessageID)
 		if err != nil || len(unread) == 0 {
 			continue
 		}
@@ -295,7 +295,7 @@ func (d *daemon) runTriageOnce(dir string) {
 	// Delivered (or nothing important) -> mark read so they aren't re-triaged.
 	read := 0
 	for chatID, ids := range plan.TG {
-		if err := tdlib.MarkMessagesRead(d.tdjson, d.clientID, chatID, ids); err != nil {
+		if err := telegram.MarkMessagesRead(d.tdjson, d.clientID, chatID, ids); err != nil {
 			fmt.Printf("[triage] couldn't mark read in chat %d: %v\n", chatID, err)
 		} else {
 			read += len(ids)

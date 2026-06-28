@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Zouriel/zcoms/internal/authentication"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
 	"github.com/Zouriel/zcoms/internal/config"
-	"github.com/Zouriel/zcoms/internal/tdlib"
 
 	"github.com/spf13/cobra"
 )
@@ -20,16 +19,16 @@ func init() {
 			if err := requireNoDaemon("auth"); err != nil {
 				return err
 			}
-			tdjson, err := tdlib.LoadTDJSON()
+			tdjson, err := telegram.LoadTDJSON()
 			if err != nil {
 				return err
 			}
 			defer tdjson.Close()
 
-			tdlib.ConfigureLogging(tdjson)
+			telegram.ConfigureLogging(tdjson)
 			clientID := tdjson.CreateClientID()
 
-			state, err := tdlib.FetchAuthorizationState(tdjson, clientID)
+			state, err := telegram.FetchAuthorizationState(tdjson, clientID)
 			if err != nil {
 				if !strings.Contains(err.Error(), "Initialization parameters are needed") {
 					return err
@@ -44,17 +43,17 @@ func init() {
 					return credErr
 				}
 
-				if err := tdlib.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
+				if err := telegram.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
 					return err
 				}
 
-				state, err = tdlib.FetchAuthorizationState(tdjson, clientID)
+				state, err = telegram.FetchAuthorizationState(tdjson, clientID)
 				if err != nil {
 					return err
 				}
 			}
 
-			if state == tdlib.AuthStateWaitTdlibParameters {
+			if state == telegram.AuthStateWaitTdlibParameters {
 				apiID, apiHash, credErr := config.ResolveAPICredentials()
 				if credErr != nil {
 					if errors.Is(credErr, config.ErrMissingCredentials) {
@@ -64,29 +63,29 @@ func init() {
 					return credErr
 				}
 
-				if err := tdlib.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
+				if err := telegram.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
 					return err
 				}
 
-				state, err = tdlib.FetchAuthorizationState(tdjson, clientID)
+				state, err = telegram.FetchAuthorizationState(tdjson, clientID)
 				if err != nil {
 					return err
 				}
 			}
 
-			if state == tdlib.AuthStateReady {
-				user, err := tdlib.FetchCurrentUser(tdjson, clientID)
+			if state == telegram.AuthStateReady {
+				user, err := telegram.FetchCurrentUser(tdjson, clientID)
 				if err != nil {
 					return err
 				}
 
-				updatedConfig, err := authentication.PersistIdentity(AppConfig, ConfigFilePath, user)
+				updatedConfig, err := telegram.PersistIdentity(AppConfig, ConfigFilePath, user)
 				if err != nil {
 					return err
 				}
 
 				AppConfig = updatedConfig
-				fmt.Println("Logged in as", authentication.BuildIdentityLabelFromUser(user))
+				fmt.Println("Logged in as", telegram.BuildIdentityLabelFromUser(user))
 				return nil
 			}
 

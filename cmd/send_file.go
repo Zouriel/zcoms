@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Zouriel/zcoms/internal/agent"
-	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
 
 	"github.com/spf13/cobra"
 )
@@ -51,13 +51,13 @@ func init() {
 				return err
 			}
 
-			temporaryMessageID, label, err := tdlib.SendLocalFileMessage(tdjson, clientID, chatID, path, caption)
+			temporaryMessageID, label, err := telegram.SendLocalFileMessage(tdjson, clientID, chatID, path, caption)
 			if err != nil {
 				return err
 			}
 
 			fmt.Printf("Uploading %s...\n", label)
-			if err := tdlib.WaitForSendCompletion(tdjson, clientID, temporaryMessageID, 30*time.Minute); err != nil {
+			if err := telegram.WaitForSendCompletion(tdjson, clientID, temporaryMessageID, 30*time.Minute); err != nil {
 				return err
 			}
 
@@ -72,14 +72,14 @@ func init() {
 // waitUntilReady drives the auth state machine far enough to reach Ready,
 // applying TDLib parameters if asked. It assumes an existing session (no
 // interactive login) — run `zc tg login` first if not authenticated.
-func waitUntilReady(tdjson *tdlib.TDJSON, clientID int32, apiID int32, apiHash string) error {
+func waitUntilReady(tdjson *telegram.TDJSON, clientID int32, apiID int32, apiHash string) error {
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		state, err := tdlib.FetchAuthorizationState(tdjson, clientID)
+		state, err := telegram.FetchAuthorizationState(tdjson, clientID)
 		if err != nil {
 			if strings.Contains(err.Error(), "Initialization parameters are needed") ||
 				strings.Contains(err.Error(), "Request aborted") {
-				if err := tdlib.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
+				if err := telegram.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
 					return err
 				}
 				time.Sleep(200 * time.Millisecond)
@@ -89,10 +89,10 @@ func waitUntilReady(tdjson *tdlib.TDJSON, clientID int32, apiID int32, apiHash s
 		}
 
 		switch state {
-		case tdlib.AuthStateReady:
+		case telegram.AuthStateReady:
 			return nil
-		case tdlib.AuthStateWaitTdlibParameters:
-			if err := tdlib.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
+		case telegram.AuthStateWaitTdlibParameters:
+			if err := telegram.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
 				return err
 			}
 		default:
@@ -104,10 +104,10 @@ func waitUntilReady(tdjson *tdlib.TDJSON, clientID int32, apiID int32, apiHash s
 }
 
 // resolveChatTarget turns a numeric chat id or @username into a chat id.
-func resolveChatTarget(tdjson *tdlib.TDJSON, clientID int32, target string) (int64, error) {
+func resolveChatTarget(tdjson *telegram.TDJSON, clientID int32, target string) (int64, error) {
 	if id, err := strconv.ParseInt(target, 10, 64); err == nil {
 		return id, nil
 	}
 	username := strings.TrimPrefix(target, "@")
-	return tdlib.ResolveChatIdentifierByUsername(tdjson, clientID, username)
+	return telegram.ResolveChatIdentifierByUsername(tdjson, clientID, username)
 }

@@ -4,8 +4,7 @@ import (
 	"fmt"
 
 	"github.com/Zouriel/zcoms/internal/agent"
-	"github.com/Zouriel/zcoms/internal/authentication"
-	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
 
 	"github.com/spf13/cobra"
 )
@@ -61,12 +60,12 @@ func init() {
 				return err
 			}
 
-			self, err := tdlib.FetchCurrentUser(tdjson, clientID)
+			self, err := telegram.FetchCurrentUser(tdjson, clientID)
 			if err == nil {
 				fmt.Println("Running as:", self.FirstName, self.LastName)
 				// Record identity + auth_state so config.json reflects the live
 				// session (the daemon owns TDLib, so `zc tg auth` can't run to do it).
-				if updated, perr := authentication.PersistIdentity(AppConfig, ConfigFilePath, self); perr == nil {
+				if updated, perr := telegram.PersistIdentity(AppConfig, ConfigFilePath, self); perr == nil {
 					AppConfig = updated
 				}
 			}

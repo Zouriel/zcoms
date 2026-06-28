@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
 
 	"github.com/spf13/cobra"
 )
@@ -38,15 +38,15 @@ func init() {
 			defer tdjson.Close()
 
 			for {
-				state, err := tdlib.FetchAuthorizationState(tdjson, clientID)
+				state, err := telegram.FetchAuthorizationState(tdjson, clientID)
 				if err != nil {
 					return err
 				}
-				if state == tdlib.AuthStateReady {
+				if state == telegram.AuthStateReady {
 					break
 				}
-				if state == tdlib.AuthStateWaitTdlibParameters {
-					if err := tdlib.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
+				if state == telegram.AuthStateWaitTdlibParameters {
+					if err := telegram.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
 						return err
 					}
 				}
@@ -58,7 +58,7 @@ func init() {
 				chatID = id
 			} else {
 				username := strings.TrimPrefix(target, "@")
-				chatID, err = tdlib.ResolveChatIdentifierByUsername(tdjson, clientID, username)
+				chatID, err = telegram.ResolveChatIdentifierByUsername(tdjson, clientID, username)
 				if err != nil {
 					return err
 				}
@@ -71,13 +71,13 @@ func init() {
 	tgCmd.AddCommand(followChatCommand)
 }
 
-func executeChatFollow(tdjson *tdlib.TDJSON, clientID int32, chatID int64) error {
+func executeChatFollow(tdjson *telegram.TDJSON, clientID int32, chatID int64) error {
 	userNameCache := map[int64]string{}
 	chatTitleCache := map[int64]string{}
 
 	seen := map[int64]bool{}
 
-	if history, err := tdlib.FetchChatHistory(tdjson, clientID, chatID, 20); err == nil && len(history) > 0 {
+	if history, err := telegram.FetchChatHistory(tdjson, clientID, chatID, 20); err == nil && len(history) > 0 {
 		fmt.Println("---- last 20 ----")
 
 		for i := len(history) - 1; i >= 0; i-- {
@@ -111,33 +111,33 @@ func executeChatFollow(tdjson *tdlib.TDJSON, clientID int32, chatID int64) error
 			}
 
 			if path, isFile := looksLikeExistingFile(line); isFile {
-				temporaryMessageID, label, sendErr := tdlib.SendLocalFileMessage(tdjson, clientID, chatID, path, "")
+				temporaryMessageID, label, sendErr := telegram.SendLocalFileMessage(tdjson, clientID, chatID, path, "")
 				if sendErr != nil {
 					fmt.Println("Send failed:", sendErr)
 					continue
 				}
 				fmt.Printf("Uploading %s (%s)...\n", label, filepath.Base(path))
 				go func() {
-					if err := tdlib.WaitForSendCompletion(tdjson, clientID, temporaryMessageID, mediaDownloadTimeout); err != nil {
+					if err := telegram.WaitForSendCompletion(tdjson, clientID, temporaryMessageID, mediaDownloadTimeout); err != nil {
 						fmt.Println("Upload failed:", err)
 					}
 				}()
 				continue
 			}
 
-			if _, err := tdlib.SendTextMessage(tdjson, clientID, chatID, line); err != nil {
+			if _, err := telegram.SendTextMessage(tdjson, clientID, chatID, line); err != nil {
 				fmt.Println("Send failed:", err)
 			}
 		}
 	}()
 
 	for {
-		updateJSON, err := tdlib.ReceiveUpdates(tdjson)
+		updateJSON, err := telegram.ReceiveUpdates(tdjson)
 		if err != nil || updateJSON == "" {
 			continue
 		}
 
-		u, ok := tdlib.ParseUpdateNewMessage(updateJSON)
+		u, ok := telegram.ParseUpdateNewMessage(updateJSON)
 		if !ok || u.Message.ChatID != chatID {
 			continue
 		}
@@ -157,7 +157,7 @@ func executeChatFollow(tdjson *tdlib.TDJSON, clientID int32, chatID int64) error
 
 // formatMessageContent renders a message for display: text inline, media as a
 // [label] tag with any caption appended.
-func formatMessageContent(content tdlib.Content) string {
+func formatMessageContent(content telegram.Content) string {
 	if content.Type == "messageText" {
 		return content.Text.Text
 	}
@@ -174,9 +174,9 @@ func formatMessageContent(content tdlib.Content) string {
 }
 
 func resolveSenderDisplayName(
-	tdjson *tdlib.TDJSON,
+	tdjson *telegram.TDJSON,
 	clientID int32,
-	sender tdlib.SenderID,
+	sender telegram.SenderID,
 	userNameCache map[int64]string,
 	chatTitleCache map[int64]string,
 ) string {
@@ -186,7 +186,7 @@ func resolveSenderDisplayName(
 		if cached, ok := userNameCache[uid]; ok && cached != "" {
 			return cached
 		}
-		name, err := tdlib.FetchUserDisplayName(tdjson, clientID, uid)
+		name, err := telegram.FetchUserDisplayName(tdjson, clientID, uid)
 		if err == nil && name != "" {
 			userNameCache[uid] = name
 			return name
@@ -198,7 +198,7 @@ func resolveSenderDisplayName(
 		if cached, ok := chatTitleCache[cid]; ok && cached != "" {
 			return cached
 		}
-		title, err := tdlib.FetchChatTitle(tdjson, clientID, cid)
+		title, err := telegram.FetchChatTitle(tdjson, clientID, cid)
 		if err == nil && title != "" {
 			chatTitleCache[cid] = title
 			return title

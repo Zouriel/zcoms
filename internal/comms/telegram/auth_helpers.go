@@ -1,28 +1,27 @@
-package authentication
+package telegram
 
 import (
 	"fmt"
 	"strings"
 
 	"github.com/Zouriel/zcoms/internal/config"
-	"github.com/Zouriel/zcoms/internal/tdlib"
 )
 
 func RequireAuthenticatedSession() error {
-	tdjson, err := tdlib.LoadTDJSON()
+	tdjson, err := LoadTDJSON()
 	if err != nil {
 		return err
 	}
 	defer tdjson.Close()
 
-	tdlib.ConfigureLogging(tdjson)
+	ConfigureLogging(tdjson)
 	clientID := tdjson.CreateClientID()
 
-	state, err := tdlib.FetchAuthorizationState(tdjson, clientID)
+	state, err := FetchAuthorizationState(tdjson, clientID)
 	if err != nil {
 		return err
 	}
-	if state != tdlib.AuthStateReady {
+	if state != AuthStateReady {
 		return fmt.Errorf("not logged in (run `zc tg login`)")
 	}
 
@@ -37,16 +36,16 @@ func ResolveIdentityLabel(configuration config.Config, configPath string) (strin
 		return configuration.PhoneNumber, configuration, nil
 	}
 
-	tdjson, err := tdlib.LoadTDJSON()
+	tdjson, err := LoadTDJSON()
 	if err != nil {
 		return "", configuration, err
 	}
 	defer tdjson.Close()
 
-	tdlib.ConfigureLogging(tdjson)
+	ConfigureLogging(tdjson)
 	clientID := tdjson.CreateClientID()
 
-	user, err := tdlib.FetchCurrentUser(tdjson, clientID)
+	user, err := FetchCurrentUser(tdjson, clientID)
 	if err != nil {
 		return "", configuration, err
 	}
@@ -59,7 +58,7 @@ func ResolveIdentityLabel(configuration config.Config, configPath string) (strin
 	return BuildIdentityLabelFromUser(user), updatedConfig, nil
 }
 
-func PersistIdentity(configuration config.Config, configPath string, user tdlib.User) (config.Config, error) {
+func PersistIdentity(configuration config.Config, configPath string, user User) (config.Config, error) {
 	// Reaching here means TDLib is AuthStateReady, so mark the session authorized.
 	// This is the one chokepoint shared by `zc tg auth`, `zc tg login`, and the daemon;
 	// without it auth_state stays at its "unauthorized" default forever (logout
@@ -74,7 +73,7 @@ func PersistIdentity(configuration config.Config, configPath string, user tdlib.
 	return configuration, nil
 }
 
-func BuildIdentityLabelFromUser(user tdlib.User) string {
+func BuildIdentityLabelFromUser(user User) string {
 	if user.Username != "" {
 		return "@" + user.Username
 	}

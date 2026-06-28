@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Zouriel/zcoms/internal/agent"
-	"github.com/Zouriel/zcoms/internal/whatsapp"
+	"github.com/Zouriel/zcoms/internal/comms/whatsapp"
 
 	"github.com/spf13/cobra"
 )

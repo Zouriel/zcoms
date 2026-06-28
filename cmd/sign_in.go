@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Zouriel/zcoms/internal/config"
-	"github.com/Zouriel/zcoms/internal/tdlib"
+	"github.com/Zouriel/zcoms/internal/comms/telegram"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -38,7 +38,7 @@ func init() {
 			didInteractiveAuth := false
 
 			for {
-				authorizationState, stateErr := tdlib.FetchAuthorizationState(tdjson, clientID)
+				authorizationState, stateErr := telegram.FetchAuthorizationState(tdjson, clientID)
 				if stateErr != nil {
 					if isRecoverableTDLibError(stateErr) {
 						_ = safeCloseTDJSON(&tdjson)
@@ -54,12 +54,12 @@ func init() {
 
 				switch authorizationState {
 
-				case tdlib.AuthStateWaitTdlibParameters:
-					if err := tdlib.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
+				case telegram.AuthStateWaitTdlibParameters:
+					if err := telegram.ApplyTdlibParameters(tdjson, clientID, AppConfig.TdlibDir, apiID, apiHash); err != nil {
 						return err
 					}
 
-				case tdlib.AuthStateWaitPhoneNumber:
+				case telegram.AuthStateWaitPhoneNumber:
 					didInteractiveAuth = true
 					phoneNumber, err := promptLine(consoleReader, "Phone number (+countrycode...): ")
 					if err != nil {
@@ -69,11 +69,11 @@ func init() {
 						fmt.Println("Phone number cannot be empty.")
 						continue
 					}
-					if err := tdlib.ProvideAuthenticationPhoneNumber(tdjson, clientID, phoneNumber); err != nil {
+					if err := telegram.ProvideAuthenticationPhoneNumber(tdjson, clientID, phoneNumber); err != nil {
 						return err
 					}
 
-				case tdlib.AuthStateWaitCode:
+				case telegram.AuthStateWaitCode:
 					didInteractiveAuth = true
 					code, err := promptLine(consoleReader, "Telegram code: ")
 					if err != nil {
@@ -83,11 +83,11 @@ func init() {
 						fmt.Println("Code cannot be empty.")
 						continue
 					}
-					if err := tdlib.SubmitAuthenticationCode(tdjson, clientID, code); err != nil {
+					if err := telegram.SubmitAuthenticationCode(tdjson, clientID, code); err != nil {
 						return err
 					}
 
-				case tdlib.AuthStateWaitPassword:
+				case telegram.AuthStateWaitPassword:
 					didInteractiveAuth = true
 					password, err := promptHidden("2FA password: ")
 					if err != nil {
@@ -97,11 +97,11 @@ func init() {
 						fmt.Println("Password cannot be empty.")
 						continue
 					}
-					if err := tdlib.SubmitAuthenticationPassword(tdjson, clientID, password); err != nil {
+					if err := telegram.SubmitAuthenticationPassword(tdjson, clientID, password); err != nil {
 						return err
 					}
 
-				case tdlib.AuthStateReady:
+				case telegram.AuthStateReady:
 					if didInteractiveAuth {
 						fmt.Println("Logged in ✅")
 						return nil
@@ -119,7 +119,7 @@ func init() {
 					fmt.Println("Refused existing session. To login to a different account, use a different TDLib database directory.")
 					return nil
 
-				case tdlib.AuthStateLoggingOut, tdlib.AuthStateClosing, tdlib.AuthStateClosed:
+				case telegram.AuthStateLoggingOut, telegram.AuthStateClosing, telegram.AuthStateClosed:
 					_ = safeCloseTDJSON(&tdjson)
 					tdjson, clientID, err = startTDLibClient()
 					if err != nil {
@@ -137,7 +137,7 @@ func init() {
 	tgCmd.AddCommand(signInCommand)
 }
 
-func safeCloseTDJSON(tdjson **tdlib.TDJSON) error {
+func safeCloseTDJSON(tdjson **telegram.TDJSON) error {
 	if tdjson == nil || *tdjson == nil {
 		return nil
 	}
@@ -153,13 +153,13 @@ func isRecoverableTDLibError(err error) bool {
 		strings.Contains(msg, "Not enough resources")
 }
 
-func startTDLibClient() (*tdlib.TDJSON, int32, error) {
-	tdjson, err := tdlib.LoadTDJSON()
+func startTDLibClient() (*telegram.TDJSON, int32, error) {
+	tdjson, err := telegram.LoadTDJSON()
 	if err != nil {
 		return nil, 0, err
 	}
 
-	tdlib.ConfigureLogging(tdjson)
+	telegram.ConfigureLogging(tdjson)
 
 	clientID := tdjson.CreateClientID()
 
