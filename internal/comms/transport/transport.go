@@ -93,6 +93,27 @@ type QRProvider interface {
 	CurrentQR() string
 }
 
+// HistMessage is one stored message returned by Reader.History (oldest-first).
+type HistMessage struct {
+	MessageID string
+	Sender    string // display name, or "you" for own outbound
+	FromMe    bool
+	Text      string
+	Kind      string
+	File      string
+	At        time.Time
+}
+
+// Reader is an optional capability: a transport that keeps a queryable message
+// history so the daemon can serve `read`/`unread`/`mark_read` for it (Telegram
+// reads live from TDLib; WhatsApp-over-whatsmeow keeps its own store). Unread
+// returns messages others sent that haven't been triaged yet, as Inbounds.
+type Reader interface {
+	History(chatID string, count int) ([]HistMessage, error)
+	Unread() ([]Inbound, error)
+	MarkRead(chatID string, msgIDs []string) error
+}
+
 // Actor is an optional capability: a transport that can run a named connect/
 // disconnect action from the connectors page. Known actions:
 //   - "reconnect": re-arm pairing (e.g. regenerate a fresh WhatsApp QR after one

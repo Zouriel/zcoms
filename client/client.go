@@ -174,7 +174,15 @@ func (c *Client) Read(to string, count int, download bool) (Response, error) {
 	return c.Do(Request{Op: "read", To: to, Count: count, Download: download}, d)
 }
 
-// Unread returns unread Telegram 1:1 messages from non-allow-listed senders.
+// ReadOn fetches a chat's recent history on a specific transport (to is that
+// transport's native id, e.g. a WhatsApp JID). Telegram callers use Read.
+func (c *Client) ReadOn(transport, to string, count int) (Response, error) {
+	return c.Do(Request{Op: "read", Transport: transport, To: to, Count: count}, time.Now().Add(60*time.Second))
+}
+
+// Unread returns unread 1:1 messages across every transport the daemon serves
+// (Telegram plus any transport that keeps a readable store, e.g. WhatsApp). Each
+// item carries its Transport so callers can route a reply / mark-read correctly.
 func (c *Client) Unread() ([]UnreadItem, error) {
 	resp, err := c.Do(Request{Op: "unread"}, time.Now().Add(60*time.Second))
 	return resp.Unread, err
@@ -183,6 +191,13 @@ func (c *Client) Unread() ([]UnreadItem, error) {
 // MarkRead marks the given Telegram messages in a chat as read.
 func (c *Client) MarkRead(chatID int64, messageIDs []int64) error {
 	_, err := c.Do(Request{Op: "mark_read", ChatID: chatID, MessageIDs: messageIDs}, time.Now().Add(30*time.Second))
+	return err
+}
+
+// MarkReadOn marks messages read on a non-Telegram transport (address is the
+// native chat id, e.g. a WhatsApp JID; refs are the string message ids).
+func (c *Client) MarkReadOn(transport, address string, refs []string) error {
+	_, err := c.Do(Request{Op: "mark_read", Transport: transport, To: address, MsgRefs: refs}, time.Now().Add(30*time.Second))
 	return err
 }
 

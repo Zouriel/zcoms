@@ -167,6 +167,42 @@ func parseIntOrZero(s string) int64 {
 	return n
 }
 
+// collectUnread merges Telegram unread (read live from TDLib) with the unread of
+// every transport that keeps a readable store (WhatsApp, …), tagging each item
+// with its transport so triage can group and mark-read correctly.
+func (d *daemon) collectUnread() []client.UnreadItem {
+	items := d.collectUnreadTG()
+	for _, name := range d.transportNames() {
+		if name == "telegram" {
+			continue
+		}
+		rdr, ok := d.registry[name].(transport.Reader)
+		if !ok {
+			continue
+		}
+		ins, err := rdr.Unread()
+		if err != nil {
+			d.logf("unread(%s): %v", name, err)
+			continue
+		}
+		for _, in := range ins {
+			it := client.UnreadItem{
+				Sender:    in.Sender,
+				Text:      in.Text,
+				When:      in.At.Unix(),
+				Transport: in.From.Transport,
+				Address:   in.From.ID,
+				MsgRef:    in.MessageID,
+			}
+			if len(in.Files) > 0 {
+				it.File = in.Files[0]
+			}
+			items = append(items, it)
+		}
+	}
+	return items
+}
+
 // connectors snapshots every registered transport's status for the `connectors`
 // op (the console's Connectors page renders one card per entry).
 func (d *daemon) connectors() []client.Connector {

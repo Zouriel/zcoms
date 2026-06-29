@@ -50,9 +50,11 @@ type Request struct {
 	// owner for backward-compatible local CLI calls.
 	Caller string `json:"caller,omitempty"`
 
-	// mark_read
-	ChatID     int64   `json:"chat_id,omitempty"`
-	MessageIDs []int64 `json:"message_ids,omitempty"`
+	// mark_read (Telegram uses ChatID+MessageIDs; non-Telegram transports use the
+	// native address in To plus string MsgRefs).
+	ChatID     int64    `json:"chat_id,omitempty"`
+	MessageIDs []int64  `json:"message_ids,omitempty"`
+	MsgRefs    []string `json:"msg_refs,omitempty"`
 
 	// subscribe: which event stream to receive (a module/role name).
 	Role string `json:"role,omitempty"`
@@ -89,6 +91,14 @@ type UnreadItem struct {
 	When   int64  `json:"when"` // unix seconds
 	ChatID int64  `json:"chat_id"`
 	MsgID  int64  `json:"msg_id"`
+
+	// Multi-transport: Telegram items leave these empty (Transport defaults to
+	// telegram). Non-Telegram transports (WhatsApp, …) carry the transport name,
+	// the native chat address (JID), and the string message id to mark read.
+	Transport string `json:"transport,omitempty"`
+	Address   string `json:"address,omitempty"`
+	MsgRef    string `json:"msg_ref,omitempty"`
+	File      string `json:"file,omitempty"`
 }
 
 // Event is one pushed message on a subscribe stream: an incoming 1:1 message the

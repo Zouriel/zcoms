@@ -122,6 +122,29 @@ func (d *daemon) handleIPC(conn net.Conn) {
 		writeIPC(conn, client.Response{OK: true, ChatID: parseIntOrZero(ref.ChatID), Address: ref.ChatID, Label: ref.Label})
 
 	case "read":
+		// Non-Telegram transports read from their own history store (To is the
+		// native chat id, e.g. a WhatsApp JID).
+		if transportName(req) != "telegram" {
+			rdr, ok := d.registry[transportName(req)].(transport.Reader)
+			if !ok {
+				writeIPC(conn, client.Response{Error: transportName(req) + " has no readable history"})
+				return
+			}
+			hist, err := rdr.History(req.To, req.Count)
+			if err != nil {
+				writeIPC(conn, client.Response{Error: err.Error()})
+				return
+			}
+			msgs := make([]client.Message, 0, len(hist))
+			for _, h := range hist {
+				msgs = append(msgs, client.Message{
+					Sender: h.Sender, Outgoing: h.FromMe, Text: h.Text,
+					Kind: h.Kind, File: h.File, Date: h.At.Unix(),
+				})
+			}
+			writeIPC(conn, client.Response{OK: true, Address: req.To, Messages: msgs})
+			return
+		}
 		chatID, _, err := d.resolveChat(req.To)
 		if err != nil {
 			writeIPC(conn, client.Response{Error: err.Error()})
@@ -215,9 +238,24 @@ func (d *daemon) handleIPC(conn net.Conn) {
 		writeIPC(conn, client.Response{OK: true})
 
 	case "unread":
-		writeIPC(conn, client.Response{OK: true, Unread: d.collectUnreadTG()})
+		writeIPC(conn, client.Response{OK: true, Unread: d.collectUnread()})
 
 	case "mark_read":
+		// Non-Telegram transports clear unread in their own store (To is the
+		// native chat id, MsgRefs the string message ids).
+		if transportName(req) != "telegram" {
+			rdr, ok := d.registry[transportName(req)].(transport.Reader)
+			if !ok {
+				writeIPC(conn, client.Response{Error: transportName(req) + " has no readable history"})
+				return
+			}
+			if err := rdr.MarkRead(req.To, req.MsgRefs); err != nil {
+				writeIPC(conn, client.Response{Error: err.Error()})
+				return
+			}
+			writeIPC(conn, client.Response{OK: true, Address: req.To})
+			return
+		}
 		if req.ChatID == 0 || len(req.MessageIDs) == 0 {
 			writeIPC(conn, client.Response{Error: "mark_read needs chat_id and message_ids"})
 			return

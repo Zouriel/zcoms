@@ -35,6 +35,7 @@ var (
 	_ transport.Transport  = (*Transport)(nil)
 	_ transport.QRProvider = (*Transport)(nil)
 	_ transport.Actor      = (*Transport)(nil)
+	_ transport.Reader     = (*Transport)(nil)
 )
 
 // Transport is one connected WhatsApp account.
@@ -49,6 +50,7 @@ type Transport struct {
 	me      string // own JID string, for FromSelf
 	inbound chan<- transport.Inbound
 	ctx     context.Context // the Start ctx, reused to re-arm the QR channel
+	db      *sql.DB         // the device-store DB; also holds our zc_messages history table
 }
 
 // New returns a WhatsApp transport whose device session persists at dbPath
@@ -126,6 +128,16 @@ func (t *Transport) Start(ctx context.Context, inbound chan<- transport.Inbound)
 	if err := container.Upgrade(ctx); err != nil {
 		t.setStatus(transport.StateError, err.Error())
 		return fmt.Errorf("whatsmeow store upgrade: %w", err)
+	}
+	// Our own history table lives alongside whatsmeow's tables in the same DB, so
+	// the daemon can serve `read`/`unread` for WhatsApp (whatsmeow keeps no
+	// queryable history of its own).
+	t.mu.Lock()
+	t.db = db
+	t.mu.Unlock()
+	if err := t.initMessageStore(); err != nil {
+		t.setStatus(transport.StateError, err.Error())
+		return fmt.Errorf("whatsapp message store: %w", err)
 	}
 	device, err := container.GetFirstDevice(ctx)
 	if err != nil {
@@ -319,12 +331,25 @@ func (t *Transport) onMessage(e *events.Message) {
 	if in.Sender == "" {
 		in.Sender = e.Info.Sender.User
 	}
+
+	// Persist for history/triage. Unread only for messages others sent us (not
+	// our own, mirrored from another device) — triage never digests own traffic.
+	t.storeMessage(e.Info.Chat.String(), e.Info.ID, in.Sender, in.FromSelf, text, e.Info.Type,
+		fileOf(in.Files), e.Info.Timestamp, !in.FromSelf)
+
 	if t.inbound != nil {
 		select {
 		case t.inbound <- in:
 		case <-time.After(5 * time.Second):
 		}
 	}
+}
+
+func fileOf(files []string) string {
+	if len(files) > 0 {
+		return files[0]
+	}
+	return ""
 }
 
 // messageText pulls the human text out of the common message shapes.
@@ -364,6 +389,8 @@ func (t *Transport) Send(to transport.Address, text string) (transport.MsgRef, e
 	if err != nil {
 		return transport.MsgRef{}, err
 	}
+	// Record our own outbound so chat history shows both sides.
+	t.storeMessage(jid.String(), resp.ID, "you", true, text, "messageText", "", resp.Timestamp, false)
 	return transport.MsgRef{ID: resp.ID, ChatID: jid.String()}, nil
 }
 
@@ -410,6 +437,7 @@ func (t *Transport) SendFile(to transport.Address, path, caption string) (transp
 	if err != nil {
 		return transport.MsgRef{}, err
 	}
+	t.storeMessage(jid.String(), resp.ID, "you", true, caption, "messageDocument", path, resp.Timestamp, false)
 	return transport.MsgRef{ID: resp.ID, ChatID: jid.String(), Label: name}, nil
 }
 
