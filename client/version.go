@@ -8,4 +8,10 @@ package client
 //
 // Bump this only on a breaking change to the wire types in protocol.go. Additive,
 // backward-compatible fields (new omitempty options) do not require a bump.
-const ProtocolVersion = 1
+//
+// v2: multi-transport. Requests/Events carry a Transport tag (absent = telegram)
+// and an Address; the daemon routes sends through a transport registry and
+// exposes per-connector status (the `connectors` op). The bump is a safety
+// interlock: a v2 caller may ask the daemon to send on WhatsApp/Instagram, which
+// a v1 (Telegram-only) daemon would silently misroute — so they must match.
+const ProtocolVersion = 2

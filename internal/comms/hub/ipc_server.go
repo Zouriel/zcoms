@@ -9,7 +9,17 @@ import (
 
 	"github.com/Zouriel/zcoms/client"
 	"github.com/Zouriel/zcoms/internal/comms/telegram"
+	"github.com/Zouriel/zcoms/internal/comms/transport"
 )
+
+// transportName resolves which connector a request targets. Absent = telegram,
+// so every pre-v2 single-id call keeps routing to Telegram unchanged.
+func transportName(req client.Request) string {
+	if req.Transport == "" {
+		return "telegram"
+	}
+	return req.Transport
+}
 
 // serveIPC opens the Unix socket upper tiers connect to in order to reuse the
 // daemon's single Telegram session and the contacts directory.
@@ -78,33 +88,38 @@ func (d *daemon) handleIPC(conn net.Conn) {
 		writeIPC(conn, client.Response{OK: true, Version: client.ProtocolVersion})
 
 	case "send":
-		chatID, _, err := d.resolveChat(req.To)
+		t, ok := d.registry[transportName(req)]
+		if !ok {
+			writeIPC(conn, client.Response{Error: "unknown transport: " + transportName(req)})
+			return
+		}
+		ref, err := t.Send(transport.Address{Transport: transportName(req), ID: req.To}, req.Text)
 		if err != nil {
 			writeIPC(conn, client.Response{Error: err.Error()})
 			return
 		}
-		msgID, err := telegram.SendTextMessage(d.tdjson, d.clientID, chatID, req.Text)
-		if err != nil {
-			writeIPC(conn, client.Response{Error: err.Error()})
-			return
-		}
-		writeIPC(conn, client.Response{OK: true, MessageID: msgID, ChatID: chatID})
+		writeIPC(conn, client.Response{
+			OK:        true,
+			MessageID: parseIntOrZero(ref.ID),
+			ChatID:    parseIntOrZero(ref.ChatID),
+			Address:   ref.ChatID,
+		})
 
 	case "sendfile":
-		chatID, _, err := d.resolveChat(req.To)
+		t, ok := d.registry[transportName(req)]
+		if !ok {
+			writeIPC(conn, client.Response{Error: "unknown transport: " + transportName(req)})
+			return
+		}
+		// Fire-and-forget for push transports: the completion arrives as an
+		// unsolicited update the receive loop consumes, so waiting here would
+		// race. The daemon stays alive, so the upload finishes regardless.
+		ref, err := t.SendFile(transport.Address{Transport: transportName(req), ID: req.To}, req.Path, req.Text)
 		if err != nil {
 			writeIPC(conn, client.Response{Error: err.Error()})
 			return
 		}
-		// Fire-and-forget: the completion arrives as an unsolicited update the
-		// receive loop consumes, so waiting here would race. The daemon stays
-		// alive, so the upload finishes in the background regardless.
-		_, label, err := telegram.SendLocalFileMessage(d.tdjson, d.clientID, chatID, req.Path, req.Text)
-		if err != nil {
-			writeIPC(conn, client.Response{Error: err.Error()})
-			return
-		}
-		writeIPC(conn, client.Response{OK: true, ChatID: chatID, Label: label})
+		writeIPC(conn, client.Response{OK: true, ChatID: parseIntOrZero(ref.ChatID), Address: ref.ChatID, Label: ref.Label})
 
 	case "read":
 		chatID, _, err := d.resolveChat(req.To)
@@ -178,6 +193,9 @@ func (d *daemon) handleIPC(conn net.Conn) {
 			return
 		}
 		writeIPC(conn, client.Response{OK: true, ChatID: chatID})
+
+	case "connectors":
+		writeIPC(conn, client.Response{OK: true, Connectors: d.connectors()})
 
 	case "unread":
 		writeIPC(conn, client.Response{OK: true, Unread: d.collectUnreadTG()})

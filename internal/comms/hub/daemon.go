@@ -8,7 +8,9 @@
 package hub
 
 import (
+	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,6 +19,7 @@ import (
 	"github.com/Zouriel/zcoms/client"
 	"github.com/Zouriel/zcoms/internal/comms/contacts"
 	"github.com/Zouriel/zcoms/internal/comms/telegram"
+	"github.com/Zouriel/zcoms/internal/comms/transport"
 	"github.com/Zouriel/zcoms/internal/config"
 )
 
@@ -28,14 +31,33 @@ type daemon struct {
 
 	contacts *contacts.Store // comms.db — the contacts directory
 
+	// registry maps transport name → connector. Sends route by name; inbound
+	// from every transport fans into the shared `inbound` channel, which the
+	// consumer turns into client.Events and broadcasts to subscribers.
+	registry map[string]transport.Transport
+	inbound  chan transport.Inbound
+
 	mu         sync.Mutex
 	pendingAsk map[int64][]chan string // user id -> queued `zc tg ask` waiters
 	nameCache  map[int64]string        // user id -> display name
+	me         int64                   // telegram getMe id (FromSelf); guarded by mu
 
 	// subscribers receive pushed incoming-message events by role. The daemon
 	// never blocks on a slow subscriber (pushEvent drops when the buffer fills).
 	subMu       sync.Mutex
 	subscribers map[string][]chan client.Event
+}
+
+func (d *daemon) logf(format string, a ...any) { fmt.Printf("[comms] "+format+"\n", a...) }
+
+// transportNames returns the registry keys, sorted, for stable iteration.
+func (d *daemon) transportNames() []string {
+	names := make([]string, 0, len(d.registry))
+	for name := range d.registry {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // RunDaemon owns the Telegram session, serves the IPC socket, and pumps incoming
@@ -46,10 +68,17 @@ func RunDaemon(tdjson *telegram.TDJSON, clientID int32, store *contacts.Store) e
 		tdjson:      tdjson,
 		clientID:    clientID,
 		contacts:    store,
+		registry:    map[string]transport.Transport{},
+		inbound:     make(chan transport.Inbound, 256),
 		pendingAsk:  map[int64][]chan string{},
 		nameCache:   map[int64]string{},
 		subscribers: map[string][]chan client.Event{},
 	}
+
+	// Telegram is the in-process reference transport. WhatsApp/Instagram register
+	// here too once their connectors land (Phases B/C); the rest of the daemon is
+	// already transport-agnostic.
+	d.registry["telegram"] = newTelegramTransport(d)
 
 	if err := d.serveIPC(); err != nil {
 		fmt.Printf("  ! IPC socket unavailable (zc tg send/ask won't route through daemon): %v\n", err)
@@ -59,75 +88,100 @@ func RunDaemon(tdjson *telegram.TDJSON, clientID int32, store *contacts.Store) e
 	fmt.Println("⚠️  SECURITY: the agent tier can drive an AI agent on this machine for allow-listed")
 	fmt.Println("    users. Roles limit WRITES, not reads. Keep the allowlist tiny and enable 2FA.")
 
-	for {
-		updateJSON, err := telegram.ReceiveUpdates(tdjson)
-		if err != nil || updateJSON == "" {
-			continue
-		}
-		d.dispatchUpdate(updateJSON)
+	ctx := context.Background()
+
+	// One consumer turns the fan-in channel into broadcast events for everyone.
+	go d.consumeInbound()
+
+	// Start every registered transport's receive loop. Telegram's loop blocks
+	// the session, so it owns the foreground; others (if any) run in goroutines.
+	for _, name := range d.transportNames() {
+		t := d.registry[name]
+		go func(name string, t transport.Transport) {
+			if err := t.Start(ctx, d.inbound); err != nil && err != context.Canceled {
+				d.logf("transport %s stopped: %v", name, err)
+			}
+		}(name, t)
+	}
+
+	select {} // run until the process is signalled
+}
+
+// consumeInbound drains the shared inbound channel, delivering each message.
+func (d *daemon) consumeInbound() {
+	for in := range d.inbound {
+		d.deliverInbound(in)
 	}
 }
 
-// dispatchUpdate handles one incoming TDLib update under a recover so a panic
-// parsing untrusted JSON can never crash the receive loop.
-func (d *daemon) dispatchUpdate(updateJSON string) {
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("[comms] recovered from panic handling update: %v\n", r)
+// deliverInbound turns a transport.Inbound into a client.Event and fans it out.
+// For Telegram it first satisfies any outstanding `zc tg ask` (the blocking-ask
+// path) before broadcasting to the subscribed agent tier, which owns all policy
+// (allow-list, routing, auto-reply, triage). Comms itself decides nothing.
+func (d *daemon) deliverInbound(in transport.Inbound) {
+	if in.From.Transport == "telegram" {
+		if uid, err := strconv.ParseInt(in.From.ID, 10, 64); err == nil {
+			if d.resolvePendingAsk(uid, in.Text) {
+				return
+			}
 		}
-	}()
-
-	// If Telegram logs this session out remotely, keep config.json honest.
-	if state, ok := telegram.ParseUpdateAuthorizationState(updateJSON); ok {
-		if state == telegram.AuthStateLoggingOut || state == telegram.AuthStateClosed {
-			fmt.Printf("[comms] ⚠️ Telegram session %s — marking config unauthorized; needs `zc tg login` (stop the daemon first).\n", state)
-			markConfigUnauthorized()
-		}
-		return
 	}
 
-	u, ok := telegram.ParseUpdateNewMessage(updateJSON)
-	if !ok || u.Message.IsOutgoing {
-		return
-	}
-	if u.Message.SenderID.Type != "messageSenderUser" {
-		return
-	}
-	// Only ever act on 1:1 private chats. In TDLib a private chat's id equals the
-	// peer's user id; anything else is a group/supergroup/channel, which the
-	// comms pipe must stay completely silent in.
-	if u.Message.ChatID != u.Message.SenderID.UserID {
-		return
-	}
-
-	// A reply from anyone with an outstanding `zc tg ask` resolves it first.
-	if d.resolvePendingAsk(u.Message.SenderID.UserID, replyText(u.Message.Content)) {
-		return
-	}
-
-	// Otherwise push it to the subscribed agent tier, which owns all policy
-	// (allow-list, routing, auto-reply, triage, errands). Comms does not decide.
-	d.pushIncoming(u.Message)
-}
-
-// pushIncoming builds an Event for an incoming 1:1 message (downloading any
-// attachment first, since only the daemon owns the session) and fans it out to
-// every subscriber across roles.
-func (d *daemon) pushIncoming(msg telegram.Message) {
 	ev := client.Event{
 		Event:     "message",
-		ChatID:    msg.ChatID,
-		UserID:    msg.SenderID.UserID,
-		Sender:    d.senderName(msg.SenderID.UserID),
-		Text:      replyText(msg.Content),
-		Kind:      msg.Content.Type,
-		MessageID: msg.ID,
-		Date:      msg.Date,
+		Transport: in.From.Transport,
+		Address:   in.From.ID,
+		Sender:    in.Sender,
+		Text:      in.Text,
+		Kind:      in.Kind,
+		MessageID: parseIntOrZero(in.MessageID),
+		Date:      in.At.Unix(),
+		FromSelf:  in.FromSelf,
 	}
-	if msg.Content.Type != "messageText" {
-		ev.File = d.downloadMessageMedia(msg)
+	if len(in.Files) > 0 {
+		ev.File = in.Files[0]
+	}
+	// Telegram's numeric ids stay populated for back-compat with existing
+	// subscribers (the bridge reads ChatID/UserID); a 1:1 chat id == the user id.
+	if in.From.Transport == "telegram" {
+		if cid, err := strconv.ParseInt(in.From.ID, 10, 64); err == nil {
+			ev.ChatID = cid
+			ev.UserID = cid
+		}
 	}
 	d.broadcast(ev)
+}
+
+func parseIntOrZero(s string) int64 {
+	n, _ := strconv.ParseInt(s, 10, 64)
+	return n
+}
+
+// connectors snapshots every registered transport's status for the `connectors`
+// op (the console's Connectors page renders one card per entry).
+func (d *daemon) connectors() []client.Connector {
+	var out []client.Connector
+	for _, name := range d.transportNames() {
+		t := d.registry[name]
+		st := t.Status()
+		caps := t.Caps()
+		c := client.Connector{
+			Transport: name,
+			State:     st.State,
+			Detail:    st.Detail,
+			Caps: client.Caps{
+				Receive:     caps.Receive,
+				BlockingAsk: caps.BlockingAsk,
+				Files:       caps.Files,
+				Presence:    caps.Presence,
+			},
+		}
+		if !st.Since.IsZero() {
+			c.Since = st.Since.Unix()
+		}
+		out = append(out, c)
+	}
+	return out
 }
 
 // senderName resolves the value stamped into Event.Sender. It is the user's

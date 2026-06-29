@@ -108,9 +108,42 @@ func (c *Client) Do(req Request, readDeadline time.Time) (Response, error) {
 	return resp, nil
 }
 
-// Send delivers a one-way message; To is an @username or numeric chat id.
+// Address identifies a conversation on a specific transport (mirrors
+// transport.Address). ID is the transport-native id: a Telegram @username or
+// chat id, a WhatsApp JID, an Instagram thread/user id.
+type Address struct {
+	Transport string `json:"transport"`
+	ID        string `json:"id"`
+}
+
+// Send delivers a one-way message on Telegram; To is an @username or numeric
+// chat id. (Kept for the many existing callers; SendOn targets any transport.)
 func (c *Client) Send(to, text string) (Response, error) {
 	return c.Do(Request{Op: "send", To: to, Text: text}, time.Now().Add(30*time.Second))
+}
+
+// SendOn delivers a one-way message on the named transport ("telegram" |
+// "whatsapp" | "instagram"); to is that transport's native id. The reply path
+// for inbound messages uses this so an answer returns on the same app.
+func (c *Client) SendOn(transport, to, text string) (Response, error) {
+	return c.Do(Request{Op: "send", Transport: transport, To: to, Text: text}, time.Now().Add(30*time.Second))
+}
+
+// SendAddr is SendOn with an Address value.
+func (c *Client) SendAddr(addr Address, text string) (Response, error) {
+	return c.SendOn(addr.Transport, addr.ID, text)
+}
+
+// SendFileOn uploads a local file on the named transport.
+func (c *Client) SendFileOn(transport, to, path, caption string) (Response, error) {
+	return c.Do(Request{Op: "sendfile", Transport: transport, To: to, Path: path, Text: caption}, time.Now().Add(31*time.Minute))
+}
+
+// Connectors returns the live status of every transport the daemon knows
+// (Telegram/WhatsApp/Instagram and any reserved slots) for the connectors page.
+func (c *Client) Connectors() ([]Connector, error) {
+	resp, err := c.Do(Request{Op: "connectors"}, time.Now().Add(10*time.Second))
+	return resp.Connectors, err
 }
 
 // Ask sends a question and blocks until the user replies (no deadline).

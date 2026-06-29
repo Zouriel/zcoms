@@ -28,12 +28,17 @@ func DefaultSocketPath() (string, error) {
 
 // Request is one command sent to the daemon. Op selects which fields are used.
 type Request struct {
-	Op       string `json:"op"`                 // send|sendfile|read|ask|unread|mark_read|resolve|hello|contact_*|errand_*
-	To       string `json:"to,omitempty"`       // @username or numeric chat id / errand target
+	Op       string `json:"op"`                 // send|sendfile|read|ask|unread|mark_read|resolve|connectors|hello|contact_*|errand_*
+	To       string `json:"to,omitempty"`       // @username or numeric chat id / errand target / transport-native id
 	Text     string `json:"text,omitempty"`     // message body / question / caption
 	Path     string `json:"path,omitempty"`     // local file path (sendfile)
 	Count    int    `json:"count,omitempty"`    // history messages (read)
 	Download bool   `json:"download,omitempty"` // download media in a read
+
+	// Transport selects which connector a send/sendfile routes through:
+	// "telegram" | "whatsapp" | "instagram". Absent = "telegram" (so every
+	// pre-v2 single-id call keeps working unchanged).
+	Transport string `json:"transport,omitempty"`
 
 	// Protocol handshake: the client advertises the version it speaks. The
 	// daemon rejects a mismatch (see version.go). Zero = legacy/unset; the
@@ -89,15 +94,29 @@ type UnreadItem struct {
 // Event is one pushed message on a subscribe stream: an incoming 1:1 message the
 // daemon routed to this subscriber (by role/module name).
 type Event struct {
-	Event     string `json:"event"` // "message"
+	Event string `json:"event"` // "message"
+
+	// Transport names the connector the message arrived on ("telegram" |
+	// "whatsapp" | "instagram"). Address is the transport-native conversation id
+	// to reply to (a WhatsApp JID, an Instagram thread id; for Telegram it's the
+	// chat id as a string, with ChatID/UserID also set for back-compat). Absent
+	// Transport = a pre-v2 daemon, treat as "telegram".
+	Transport string `json:"transport,omitempty"`
+	Address   string `json:"address,omitempty"`
+
 	ChatID    int64  `json:"chat_id"`
 	UserID    int64  `json:"user_id"`
 	Sender    string `json:"sender"`
 	Text      string `json:"text"`
-	Kind      string `json:"kind"`           // tdlib content type, e.g. "messageText"
+	Kind      string `json:"kind"`           // content type tag, e.g. tdlib "messageText"
 	File      string `json:"file,omitempty"` // local path if media was downloaded
 	MessageID int64  `json:"message_id"`
 	Date      int64  `json:"date"`
+
+	// FromSelf is true when the connected account itself sent this (own
+	// outbound / notes-to-self). Triage drops these so it never re-ingests your
+	// own traffic across any transport.
+	FromSelf bool `json:"from_self,omitempty"`
 }
 
 // Contact is a person in the comms-owned contacts directory (comms.db). It is
@@ -146,16 +165,39 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
+// Caps mirrors transport.Caps on the wire: what a connector supports.
+type Caps struct {
+	Receive     bool `json:"receive"`
+	BlockingAsk bool `json:"blocking_ask"`
+	Files       bool `json:"files"`
+	Presence    bool `json:"presence"`
+}
+
+// Connector is one transport's live status, returned by the "connectors" op and
+// rendered as a card on the console's Connectors page. State is one of
+// disconnected | connecting | action_required | connected | error |
+// session_expired; when action_required, Detail names the action
+// (needs_qr | needs_code | needs_2fa | needs_challenge | needs_password).
+type Connector struct {
+	Transport string `json:"transport"`
+	State     string `json:"state"`
+	Detail    string `json:"detail,omitempty"`
+	Since     int64  `json:"since,omitempty"` // unix seconds the state was entered
+	Caps      Caps   `json:"caps"`
+}
+
 // Response is the daemon's reply to a Request.
 type Response struct {
-	OK        bool         `json:"ok"`
-	MessageID int64        `json:"message_id,omitempty"`
-	ChatID    int64        `json:"chat_id,omitempty"`
-	Reply     string       `json:"reply,omitempty"`
-	Label     string       `json:"label,omitempty"`
-	Messages  []Message    `json:"messages,omitempty"`
-	Unread    []UnreadItem `json:"unread,omitempty"`
-	Contacts  []Contact    `json:"contacts,omitempty"`
-	Version   int          `json:"version,omitempty"` // daemon's ProtocolVersion (hello / mismatch reply)
-	Error     string       `json:"error,omitempty"`
+	OK         bool         `json:"ok"`
+	MessageID  int64        `json:"message_id,omitempty"`
+	ChatID     int64        `json:"chat_id,omitempty"`
+	Address    string       `json:"address,omitempty"` // transport-native id of the sent/resolved message
+	Reply      string       `json:"reply,omitempty"`
+	Label      string       `json:"label,omitempty"`
+	Messages   []Message    `json:"messages,omitempty"`
+	Unread     []UnreadItem `json:"unread,omitempty"`
+	Contacts   []Contact    `json:"contacts,omitempty"`
+	Connectors []Connector  `json:"connectors,omitempty"`
+	Version    int          `json:"version,omitempty"` // daemon's ProtocolVersion (hello / mismatch reply)
+	Error      string       `json:"error,omitempty"`
 }
