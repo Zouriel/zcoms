@@ -197,6 +197,23 @@ func (d *daemon) handleIPC(conn net.Conn) {
 	case "connectors":
 		writeIPC(conn, client.Response{OK: true, Connectors: d.connectors()})
 
+	case "connector_action":
+		t, ok := d.registry[transportName(req)]
+		if !ok {
+			writeIPC(conn, client.Response{Error: "unknown transport: " + transportName(req)})
+			return
+		}
+		actor, ok := t.(transport.Actor)
+		if !ok {
+			writeIPC(conn, client.Response{Error: transportName(req) + " supports no connector actions"})
+			return
+		}
+		if err := actor.Action(req.Text); err != nil {
+			writeIPC(conn, client.Response{Error: err.Error()})
+			return
+		}
+		writeIPC(conn, client.Response{OK: true})
+
 	case "unread":
 		writeIPC(conn, client.Response{OK: true, Unread: d.collectUnreadTG()})
 

@@ -34,6 +34,7 @@ import (
 var (
 	_ transport.Transport  = (*Transport)(nil)
 	_ transport.QRProvider = (*Transport)(nil)
+	_ transport.Actor      = (*Transport)(nil)
 )
 
 // Transport is one connected WhatsApp account.
@@ -47,6 +48,7 @@ type Transport struct {
 	qr      string // current QR payload while State==action_required/needs_qr
 	me      string // own JID string, for FromSelf
 	inbound chan<- transport.Inbound
+	ctx     context.Context // the Start ctx, reused to re-arm the QR channel
 }
 
 // New returns a WhatsApp transport whose device session persists at dbPath
@@ -104,6 +106,7 @@ func (t *Transport) setQR(code string) {
 // pairing flow when no session exists yet. It blocks until ctx is cancelled.
 func (t *Transport) Start(ctx context.Context, inbound chan<- transport.Inbound) error {
 	t.inbound = inbound
+	t.ctx = ctx
 	t.setStatus(transport.StateConnecting, "")
 
 	if err := os.MkdirAll(filepath.Dir(t.dbPath), 0o700); err != nil {
@@ -170,6 +173,76 @@ func (t *Transport) Stop() error {
 	if c != nil {
 		c.Disconnect()
 	}
+	return nil
+}
+
+// Action runs a connectors-page command. "reconnect" re-arms pairing (a fresh QR
+// when unpaired, or a reconnect when paired); "logout" signs the account out.
+func (t *Transport) Action(name string) error {
+	switch name {
+	case "reconnect", "pair", "repair", "retry":
+		return t.repair()
+	case "logout", "disconnect":
+		return t.logout()
+	default:
+		return fmt.Errorf("unknown whatsapp action %q", name)
+	}
+}
+
+// repair re-arms the pairing flow: when unpaired (the QR expired or was never
+// scanned), it disconnects, requests a fresh QR channel, and reconnects so a new
+// code starts flowing; when already paired it just reconnects a dropped session.
+func (t *Transport) repair() error {
+	t.mu.Lock()
+	c, ctx := t.client, t.ctx
+	t.mu.Unlock()
+	if c == nil || ctx == nil {
+		return fmt.Errorf("whatsapp transport not started yet")
+	}
+	if c.Store.ID != nil {
+		// Already paired — just (re)connect.
+		c.Disconnect()
+		if err := c.Connect(); err != nil {
+			t.setStatus(transport.StateError, err.Error())
+			return err
+		}
+		return nil
+	}
+	// Unpaired: a QR channel must be requested before Connect, so drop the
+	// current connection first, then arm a fresh one.
+	c.Disconnect()
+	t.setStatus(transport.StateConnecting, "")
+	qrChan, err := c.GetQRChannel(ctx)
+	if err != nil {
+		t.setStatus(transport.StateError, err.Error())
+		return fmt.Errorf("whatsapp qr channel: %w", err)
+	}
+	if err := c.Connect(); err != nil {
+		t.setStatus(transport.StateError, err.Error())
+		return fmt.Errorf("whatsapp connect: %w", err)
+	}
+	go t.consumeQR(qrChan)
+	return nil
+}
+
+// logout signs the account out and drops the stored session.
+func (t *Transport) logout() error {
+	t.mu.Lock()
+	c, ctx := t.client, t.ctx
+	t.mu.Unlock()
+	if c == nil {
+		return fmt.Errorf("whatsapp transport not started yet")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if c.Store.ID != nil {
+		if err := c.Logout(ctx); err != nil {
+			return err
+		}
+	}
+	c.Disconnect()
+	t.setStatus(transport.StateDisconnected, "")
 	return nil
 }
 

@@ -93,6 +93,15 @@ type QRProvider interface {
 	CurrentQR() string
 }
 
+// Actor is an optional capability: a transport that can run a named connect/
+// disconnect action from the connectors page. Known actions:
+//   - "reconnect": re-arm pairing (e.g. regenerate a fresh WhatsApp QR after one
+//     expired) or reconnect a dropped session.
+//   - "logout": sign the account out (drops the stored session).
+type Actor interface {
+	Action(name string) error
+}
+
 // Inbound is one received message, normalised across transports. FromSelf marks
 // messages the connected account itself sent (own outbound / notes-to-self) so
 // triage can drop them in one place for every transport.

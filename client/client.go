@@ -146,6 +146,14 @@ func (c *Client) Connectors() ([]Connector, error) {
 	return resp.Connectors, err
 }
 
+// ConnectorAction runs a connect/disconnect action on a transport from the
+// connectors page — e.g. ("whatsapp", "reconnect") to re-arm a fresh QR after
+// one expired, or ("whatsapp", "logout") to sign out.
+func (c *Client) ConnectorAction(transport, action string) error {
+	_, err := c.Do(Request{Op: "connector_action", Transport: transport, Text: action}, time.Now().Add(20*time.Second))
+	return err
+}
+
 // Ask sends a question and blocks until the user replies (no deadline).
 func (c *Client) Ask(to, text string) (string, error) {
 	resp, err := c.Do(Request{Op: "ask", To: to, Text: text}, time.Time{})
