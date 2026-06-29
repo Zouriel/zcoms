@@ -13,8 +13,9 @@ var rootCmd = &cobra.Command{
 	Use:   "zc",
 	Short: "zcoms — Telegram + WhatsApp comms from your terminal",
 	Long: "zcoms (zc) sends & receives messages and media across Telegram (`zc tg`)\n" +
-		"and WhatsApp (`zc wa`). The agent features — bridge, triage, errands — are\n" +
-		"opt-in components; add them with `zc install <component>` (see `zc install`).",
+		"and WhatsApp (`zc wa`), and manages a contacts directory (`zc contacts`). The\n" +
+		"AI layer (bridge, triage, errands, session manager) and modules (team, console)\n" +
+		"are opt-in tiers — add them with `zc install <agent|team|console>`.",
 }
 
 var AppConfig config.Config
