@@ -331,12 +331,13 @@ func (t *Transport) onMessage(e *events.Message) {
 	me := t.me
 	t.mu.Unlock()
 
+	kind := messageKind(e.Message)
 	in := transport.Inbound{
 		From:      transport.Address{Transport: "whatsapp", ID: chat},
 		FromSelf:  info.IsFromMe || (me != "" && info.Sender.String() == me),
 		Sender:    info.PushName,
 		Text:      text,
-		Kind:      info.Type,
+		Kind:      kind,
 		MessageID: info.ID,
 		At:        info.Timestamp,
 	}
@@ -346,7 +347,7 @@ func (t *Transport) onMessage(e *events.Message) {
 
 	// Persist for history/triage. Unread only for messages others sent us (not
 	// our own, mirrored from another device) — triage never digests own traffic.
-	t.storeMessage(chat, info.ID, in.Sender, in.FromSelf, text, info.Type,
+	t.storeMessage(chat, info.ID, in.Sender, in.FromSelf, text, kind,
 		fileOf(in.Files), info.Timestamp, !in.FromSelf)
 
 	if t.inbound != nil {
@@ -381,6 +382,31 @@ func fileOf(files []string) string {
 		return files[0]
 	}
 	return ""
+}
+
+// messageKind classifies a message using the same vocabulary the agent bridge
+// expects from Telegram ("messageText" for plain text; media types otherwise),
+// so a WhatsApp text message is handled as a command — not mistaken for a file
+// upload. whatsmeow's own Info.Type uses different strings, hence this mapping.
+func messageKind(m *waE2E.Message) string {
+	if m == nil {
+		return "messageText"
+	}
+	switch {
+	case m.GetConversation() != "" || m.GetExtendedTextMessage() != nil:
+		return "messageText"
+	case m.GetImageMessage() != nil:
+		return "messageImage"
+	case m.GetVideoMessage() != nil:
+		return "messageVideo"
+	case m.GetDocumentMessage() != nil:
+		return "messageDocument"
+	case m.GetAudioMessage() != nil:
+		return "messageAudio"
+	}
+	// Unknown shape: treat as text so it reaches the command/agent path rather
+	// than the file handler (which would fail with no downloaded file).
+	return "messageText"
 }
 
 // messageText pulls the human text out of the common message shapes.
