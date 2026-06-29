@@ -308,34 +308,46 @@ func (t *Transport) handleEvent(evt any) {
 // Groups, broadcasts and newsletters are ignored — comms handles direct chats
 // only, mirroring the Telegram transport.
 func (t *Transport) onMessage(e *events.Message) {
-	if e.Info.IsGroup || e.Info.Chat.Server != types.DefaultUserServer {
+	info := e.Info
+	if info.IsGroup {
 		return
 	}
+	// Direct chats only. WhatsApp now addresses 1:1 chats either by phone number
+	// (s.whatsapp.net) or by LID (lid); accept both, reject groups/newsletters/
+	// broadcast/status.
+	switch info.Chat.Server {
+	case types.DefaultUserServer, types.HiddenUserServer:
+	default:
+		return
+	}
+	chatJID := directChatPhone(info)
+	chat := chatJID.String()
+
 	text := messageText(e.Message)
 	if text == "" {
-		text = "[" + e.Info.Type + "]"
+		text = "[" + info.Type + "]"
 	}
 	t.mu.Lock()
 	me := t.me
 	t.mu.Unlock()
 
 	in := transport.Inbound{
-		From:      transport.Address{Transport: "whatsapp", ID: e.Info.Chat.String()},
-		FromSelf:  e.Info.IsFromMe || (me != "" && e.Info.Sender.String() == me),
-		Sender:    e.Info.PushName,
+		From:      transport.Address{Transport: "whatsapp", ID: chat},
+		FromSelf:  info.IsFromMe || (me != "" && info.Sender.String() == me),
+		Sender:    info.PushName,
 		Text:      text,
-		Kind:      e.Info.Type,
-		MessageID: e.Info.ID,
-		At:        e.Info.Timestamp,
+		Kind:      info.Type,
+		MessageID: info.ID,
+		At:        info.Timestamp,
 	}
 	if in.Sender == "" {
-		in.Sender = e.Info.Sender.User
+		in.Sender = chatJID.User
 	}
 
 	// Persist for history/triage. Unread only for messages others sent us (not
 	// our own, mirrored from another device) — triage never digests own traffic.
-	t.storeMessage(e.Info.Chat.String(), e.Info.ID, in.Sender, in.FromSelf, text, e.Info.Type,
-		fileOf(in.Files), e.Info.Timestamp, !in.FromSelf)
+	t.storeMessage(chat, info.ID, in.Sender, in.FromSelf, text, info.Type,
+		fileOf(in.Files), info.Timestamp, !in.FromSelf)
 
 	if t.inbound != nil {
 		select {
@@ -343,6 +355,25 @@ func (t *Transport) onMessage(e *events.Message) {
 		case <-time.After(5 * time.Second):
 		}
 	}
+}
+
+// directChatPhone returns the conversation's phone-number JID. WhatsApp may
+// deliver a 1:1 chat addressed by LID; the stable phone number (used for
+// allow-list matching, replies and history) is the other party's alternative
+// address. Falls back to the LID when no phone alternative is present.
+func directChatPhone(info types.MessageInfo) types.JID {
+	chat := info.Chat
+	if chat.Server != types.HiddenUserServer {
+		return chat
+	}
+	alt := info.SenderAlt
+	if info.IsFromMe {
+		alt = info.RecipientAlt
+	}
+	if alt.Server == types.DefaultUserServer {
+		return alt
+	}
+	return chat
 }
 
 func fileOf(files []string) string {
