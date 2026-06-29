@@ -21,16 +21,17 @@ const daemonUnit = "zcoms-daemon.service"
 
 func init() {
 	installCommand := &cobra.Command{
-		Use:   "install [agent|team|console]",
-		Short: "Install a tier (agent AI layer, or a module like team/console)",
+		Use:   "install [agent|team|console|commerce]",
+		Short: "Install a tier (agent AI layer, or a module like team/console/commerce)",
 		Long: "zcoms ships with Telegram + WhatsApp comms (`zc tg` / `zc wa`). Everything\n" +
 			"above is an opt-in tier — its own pure-Go binary, composing over IPC:\n\n" +
 			"  agent    — the AI layer: bridge, triage, errands, session manager (agent.db)\n" +
 			"  team     — team coordination, delegation, GitHub sync, standups (needs agent)\n" +
-			"  console  — owner-only local web UI to edit every store (needs agent)\n\n" +
+			"  console  — owner-only local web UI to edit every store (needs agent)\n" +
+			"  commerce — Telegram-Stars commerce control plane (core-only; no agent)\n\n" +
 			"Run with no argument to see what's installed. Installing a module pulls in\n" +
-			"the agent (and the comms daemon) automatically. Each install fetches the\n" +
-			"prebuilt binary and runs it as a systemd user service.",
+			"its dependencies (the agent, and the comms daemon) automatically. Each\n" +
+			"install fetches the prebuilt binary and runs it as a systemd user service.",
 		Args:         cobra.MaximumNArgs(1),
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -43,7 +44,7 @@ func init() {
 	}
 
 	uninstallCommand := &cobra.Command{
-		Use:          "uninstall <bridge|triage|errands>",
+		Use:          "uninstall <agent|team|console|commerce>",
 		Short:        "Remove an installed component (and anything that depends on it)",
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
@@ -136,9 +137,18 @@ func runInstall(name string, force bool) error {
 
 // installable → its GitHub repo + binary name, for the prebuilt-release download.
 var componentArtifact = map[components.Name]struct{ repo, bin string }{
-	components.Agent:   {"Zouriel/zcoms-agent", "zcoms-agent"},
-	components.Team:    {"Zouriel/zcoms-team", "zcoms-team"},
-	components.Console: {"Zouriel/zcoms-console", "zcoms-console"},
+	components.Agent:    {"Zouriel/zcoms-agent", "zcoms-agent"},
+	components.Team:     {"Zouriel/zcoms-team", "zcoms-team"},
+	components.Console:  {"Zouriel/zcoms-console", "zcoms-console"},
+	components.Commerce: {"Zouriel/zcoms-commerce", "zcoms-commerce"},
+}
+
+// componentEnvFile maps a component to an optional systemd EnvironmentFile in the
+// config dir. Commerce reads its runtime URL + bearer token from there so the
+// secret never lives in a repo or in any store the console can read. The unit is
+// written with a leading '-' so a missing file is tolerated.
+var componentEnvFile = map[components.Name]string{
+	components.Commerce: "commerce.env",
 }
 
 // activateComponent makes a freshly-installed tier live: it fetches the prebuilt
@@ -163,7 +173,7 @@ func activateComponent(c components.Name) error {
 	if err := fetchComponentBinary(art.repo, art.bin); err != nil {
 		return fmt.Errorf("download failed: %w (build from source: github.com/%s)", err, art.repo)
 	}
-	return ensureComponentService(componentUnitName(c), fmt.Sprintf("zcoms %s component", c), art.bin)
+	return ensureComponentService(componentUnitName(c), fmt.Sprintf("zcoms %s component", c), art.bin, componentEnvFile[c])
 }
 
 // runUninstall removes a component and any components that depend on it.
@@ -227,6 +237,12 @@ func printPostInstallHints(installed []components.Name) {
 			fmt.Println("   • Schedule a standup: zc team standup create <name> <delegator> <@group> <HH:MM> <tz>")
 		case components.Console:
 			fmt.Println("   • Open the console:   zc console   (then log in — localhost only)")
+		case components.Commerce:
+			fmt.Println("   • Point at the runtime: write ~/.config/zcoms/commerce.env with")
+			fmt.Println("       ZC_COMMERCE_RUNTIME_URL=…  and  ZC_COMMERCE_RUNTIME_TOKEN=…")
+			fmt.Println("   • Then restart:         systemctl --user restart zcoms-commerce.service")
+			fmt.Println("   • Check the link:       zc commerce status")
+			fmt.Println("   • Onboard a store:      zc commerce new store")
 		}
 	}
 }
@@ -443,7 +459,7 @@ func fetchComponentBinary(repo, bin string) error {
 
 // ensureComponentService writes+enables a component's own user unit running its
 // downloaded binary.
-func ensureComponentService(unitName, desc, bin string) error {
+func ensureComponentService(unitName, desc, bin, envFile string) error {
 	dir, err := userUnitDir()
 	if err != nil {
 		return err
@@ -456,6 +472,13 @@ func ensureComponentService(unitName, desc, bin string) error {
 		return err
 	}
 	exe := filepath.Join(home, ".local", "bin", bin)
+	// Optional EnvironmentFile (e.g. commerce.env for the runtime token). The
+	// leading '-' tells systemd to tolerate it being absent, so the unit still
+	// starts before the file is written.
+	envLine := ""
+	if envFile != "" {
+		envLine = "EnvironmentFile=-" + filepath.Join(home, ".config", "zcoms", envFile) + "\n"
+	}
 	unit := fmt.Sprintf(`[Unit]
 Description=%s
 After=network-online.target %s
@@ -463,13 +486,13 @@ Wants=%s
 
 [Service]
 Type=simple
-ExecStart=%s
+%sExecStart=%s
 Restart=on-failure
 RestartSec=10
 
 [Install]
 WantedBy=default.target
-`, desc, daemonUnit, daemonUnit, exe)
+`, desc, daemonUnit, daemonUnit, envLine, exe)
 	if err := os.WriteFile(filepath.Join(dir, unitName), []byte(unit), 0o644); err != nil {
 		return err
 	}

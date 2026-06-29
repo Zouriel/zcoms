@@ -25,9 +25,10 @@ type Name string
 // session manager) and the modules above it (team, console). Comms is the always-
 // present core (`zc tg`/`zc wa`), never an installable.
 const (
-	Agent   Name = "agent"
-	Team    Name = "team"
-	Console Name = "console"
+	Agent    Name = "agent"
+	Team     Name = "team"
+	Console  Name = "console"
+	Commerce Name = "commerce"
 )
 
 // Meta describes an installable: what it does and which tiers it requires.
@@ -43,6 +44,7 @@ var registry = []Meta{
 	{Agent, "AI layer — interactive bridge, triage, errands, session manager (agent.db)", nil},
 	{Team, "Team coordination, task delegation, GitHub Projects sync, and standups", []Name{Agent}},
 	{Console, "Owner-only local web UI to edit every store (contacts/workspaces/personas/…)", []Name{Agent}},
+	{Commerce, "Telegram-Stars commerce control plane — stores, products, orders, refunds, billing", nil},
 }
 
 // All returns the component catalog in display order.
