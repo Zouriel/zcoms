@@ -34,7 +34,10 @@ CREATE TABLE IF NOT EXISTS zc_messages (
   unread    INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_zc_messages_chat ON zc_messages(chat_jid, ts);
-CREATE INDEX IF NOT EXISTS idx_zc_messages_unread ON zc_messages(unread);`)
+CREATE INDEX IF NOT EXISTS idx_zc_messages_unread ON zc_messages(unread);
+-- One row per (chat, message id): a redelivered message (on reconnect / history
+-- sync) is ignored on insert, so it never re-surfaces as unread after being read.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_zc_messages_unique ON zc_messages(chat_jid, msg_id);`)
 	return err
 }
 
@@ -57,9 +60,28 @@ func (t *Transport) storeMessage(chatJID, msgID, sender string, fromMe bool, tex
 	if ts.IsZero() {
 		ts = time.Now()
 	}
-	_, _ = db.Exec(`INSERT INTO zc_messages(chat_jid, msg_id, sender, from_me, text, kind, file, ts, unread)
+	_, _ = db.Exec(`INSERT OR IGNORE INTO zc_messages(chat_jid, msg_id, sender, from_me, text, kind, file, ts, unread)
 		VALUES(?,?,?,?,?,?,?,?,?)`,
 		chatJID, msgID, sender, fm, text, kind, nullStr(file), ts.Unix(), ur)
+}
+
+// markReadByIDs clears the unread flag for the given message ids across all
+// chats (WhatsApp message ids are globally unique, so no chat is needed). Used
+// when the owner reads a chat on another device (a read receipt), so triage
+// never digests a message the owner already saw.
+func (t *Transport) markReadByIDs(ids []string) {
+	t.mu.Lock()
+	db := t.db
+	t.mu.Unlock()
+	if db == nil || len(ids) == 0 {
+		return
+	}
+	ph := strings.TrimRight(strings.Repeat("?,", len(ids)), ",")
+	args := make([]any, 0, len(ids))
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	_, _ = db.Exec(`UPDATE zc_messages SET unread=0 WHERE msg_id IN (`+ph+`)`, args...)
 }
 
 // History returns the last `count` messages of a chat, oldest-first.

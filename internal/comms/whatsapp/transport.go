@@ -301,6 +301,16 @@ func (t *Transport) handleEvent(evt any) {
 		t.setStatus(transport.StateConnected, "")
 	case *events.Message:
 		t.onMessage(e)
+	case *events.Receipt:
+		// The owner read messages (on this or another device). Clear them from our
+		// unread store so triage doesn't digest things the owner already saw.
+		if e.Type == types.ReceiptTypeRead || e.Type == types.ReceiptTypeReadSelf {
+			ids := make([]string, len(e.MessageIDs))
+			for i, id := range e.MessageIDs {
+				ids[i] = string(id)
+			}
+			t.markReadByIDs(ids)
+		}
 	}
 }
 
