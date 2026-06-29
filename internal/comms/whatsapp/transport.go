@@ -419,7 +419,7 @@ func (t *Transport) downloadMedia(e *events.Message) string {
 	if err != nil {
 		return ""
 	}
-	dir := filepath.Join(filepath.Dir(t.dbPath), "wa-media")
+	dir := filepath.Join(filepath.Dir(t.dbPath), "whatsmeow-media")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return ""
 	}
@@ -450,18 +450,45 @@ func mediaFileName(e *events.Message) string {
 	case m.GetDocumentMessage() != nil:
 		mt = m.GetDocumentMessage().GetMimetype()
 	}
-	ext := ".bin"
-	if i := strings.IndexByte(mt, ';'); i >= 0 {
-		mt = mt[:i]
-	}
-	if exts, _ := mime.ExtensionsByType(strings.TrimSpace(mt)); len(exts) > 0 {
-		ext = exts[0]
-	}
 	id := e.Info.ID
 	if id == "" {
 		id = "file"
 	}
-	return "wa-" + sanitizeName(id) + ext
+	return "wa-" + sanitizeName(id) + preferredExt(mt)
+}
+
+// preferredExt maps a mimetype to a sensible file extension, preferring common
+// ones (Go's mime.ExtensionsByType returns e.g. ".f4v" before ".mp4" for video).
+func preferredExt(mimetype string) string {
+	if i := strings.IndexByte(mimetype, ';'); i >= 0 {
+		mimetype = mimetype[:i]
+	}
+	switch strings.TrimSpace(strings.ToLower(mimetype)) {
+	case "image/jpeg":
+		return ".jpg"
+	case "image/png":
+		return ".png"
+	case "image/webp":
+		return ".webp"
+	case "image/gif":
+		return ".gif"
+	case "video/mp4":
+		return ".mp4"
+	case "video/3gpp":
+		return ".3gp"
+	case "audio/ogg":
+		return ".ogg"
+	case "audio/mpeg":
+		return ".mp3"
+	case "audio/mp4", "audio/aac":
+		return ".m4a"
+	case "application/pdf":
+		return ".pdf"
+	}
+	if exts, _ := mime.ExtensionsByType(strings.TrimSpace(mimetype)); len(exts) > 0 {
+		return exts[0]
+	}
+	return ".bin"
 }
 
 func sanitizeName(s string) string {
