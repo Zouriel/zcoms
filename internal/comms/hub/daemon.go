@@ -145,6 +145,7 @@ func (d *daemon) deliverInbound(in transport.Inbound) {
 		Text:      in.Text,
 		Kind:      in.Kind,
 		MessageID: parseIntOrZero(in.MessageID),
+		MsgRef:    in.MessageID,
 		Date:      in.At.Unix(),
 		FromSelf:  in.FromSelf,
 	}
