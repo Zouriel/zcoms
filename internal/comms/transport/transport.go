@@ -86,6 +86,13 @@ type MsgRef struct {
 	Label  string // human label for async sends (e.g. an upload's filename)
 }
 
+// QRProvider is an optional capability: a transport whose ActionRequired/needs_qr
+// state has a QR payload to render (WhatsApp). The hub type-asserts for it when
+// building connector status so the console can show the code to scan.
+type QRProvider interface {
+	CurrentQR() string
+}
+
 // Inbound is one received message, normalised across transports. FromSelf marks
 // messages the connected account itself sent (own outbound / notes-to-self) so
 // triage can drop them in one place for every transport.

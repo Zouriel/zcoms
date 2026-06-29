@@ -10,6 +10,7 @@ package hub
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"github.com/Zouriel/zcoms/internal/comms/contacts"
 	"github.com/Zouriel/zcoms/internal/comms/telegram"
 	"github.com/Zouriel/zcoms/internal/comms/transport"
+	"github.com/Zouriel/zcoms/internal/comms/whatsapp"
 	"github.com/Zouriel/zcoms/internal/config"
 )
 
@@ -79,6 +81,14 @@ func RunDaemon(tdjson *telegram.TDJSON, clientID int32, store *contacts.Store) e
 	// here too once their connectors land (Phases B/C); the rest of the daemon is
 	// already transport-agnostic.
 	d.registry["telegram"] = newTelegramTransport(d)
+
+	// WhatsApp (whatsmeow, in-process). Inert until paired: it sits in
+	// action_required/needs_qr and surfaces the QR on the connectors page.
+	if dir, err := client.DefaultAppDir(); err == nil {
+		d.registry["whatsapp"] = whatsapp.New(filepath.Join(dir, "whatsmeow.db"))
+	} else {
+		d.logf("whatsapp transport disabled: %v", err)
+	}
 
 	if err := d.serveIPC(); err != nil {
 		fmt.Printf("  ! IPC socket unavailable (zc tg send/ask won't route through daemon): %v\n", err)
@@ -178,6 +188,9 @@ func (d *daemon) connectors() []client.Connector {
 		}
 		if !st.Since.IsZero() {
 			c.Since = st.Since.Unix()
+		}
+		if qp, ok := t.(transport.QRProvider); ok {
+			c.QR = qp.CurrentQR()
 		}
 		out = append(out, c)
 	}

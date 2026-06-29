@@ -184,6 +184,7 @@ type Connector struct {
 	Detail    string `json:"detail,omitempty"`
 	Since     int64  `json:"since,omitempty"` // unix seconds the state was entered
 	Caps      Caps   `json:"caps"`
+	QR        string `json:"qr,omitempty"` // QR payload to render while Detail==needs_qr (WhatsApp)
 }
 
 // Response is the daemon's reply to a Request.
