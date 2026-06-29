@@ -323,21 +323,29 @@ func (t *Transport) onMessage(e *events.Message) {
 	chatJID := directChatPhone(info)
 	chat := chatJID.String()
 
-	text := messageText(e.Message)
-	if text == "" {
-		text = "[" + info.Type + "]"
+	kind := messageKind(e.Message)
+	caption := messageText(e.Message) // the real text/caption, "" when none
+
+	// Download any attachment so the bridge can save it into the project (like
+	// the Telegram path). On failure the message still flows as text/placeholder.
+	var files []string
+	if kind != "messageText" {
+		if p := t.downloadMedia(e); p != "" {
+			files = []string{p}
+		}
 	}
+
 	t.mu.Lock()
 	me := t.me
 	t.mu.Unlock()
 
-	kind := messageKind(e.Message)
 	in := transport.Inbound{
 		From:      transport.Address{Transport: "whatsapp", ID: chat},
 		FromSelf:  info.IsFromMe || (me != "" && info.Sender.String() == me),
 		Sender:    info.PushName,
-		Text:      text,
+		Text:      caption,
 		Kind:      kind,
+		Files:     files,
 		MessageID: info.ID,
 		At:        info.Timestamp,
 	}
@@ -345,10 +353,15 @@ func (t *Transport) onMessage(e *events.Message) {
 		in.Sender = chatJID.User
 	}
 
+	// History/triage placeholder so media with no caption still reads sensibly.
+	storeText := caption
+	if storeText == "" && kind != "messageText" {
+		storeText = "[" + strings.TrimPrefix(kind, "message") + "]"
+	}
 	// Persist for history/triage. Unread only for messages others sent us (not
 	// our own, mirrored from another device) — triage never digests own traffic.
-	t.storeMessage(chat, info.ID, in.Sender, in.FromSelf, text, kind,
-		fileOf(in.Files), info.Timestamp, !in.FromSelf)
+	t.storeMessage(chat, info.ID, in.Sender, in.FromSelf, storeText, kind,
+		fileOf(files), info.Timestamp, !in.FromSelf)
 
 	if t.inbound != nil {
 		select {
@@ -382,6 +395,82 @@ func fileOf(files []string) string {
 		return files[0]
 	}
 	return ""
+}
+
+// hasDownloadableMedia reports whether a message carries an attachment we fetch.
+func hasDownloadableMedia(m *waE2E.Message) bool {
+	return m.GetImageMessage() != nil || m.GetVideoMessage() != nil ||
+		m.GetDocumentMessage() != nil || m.GetAudioMessage() != nil
+}
+
+// downloadMedia fetches a message's attachment to ~/.config/zcoms/wa-media and
+// returns its local path (or "" when there's nothing to fetch or it failed).
+func (t *Transport) downloadMedia(e *events.Message) string {
+	if e.Message == nil || !hasDownloadableMedia(e.Message) {
+		return ""
+	}
+	t.mu.Lock()
+	c := t.client
+	t.mu.Unlock()
+	if c == nil {
+		return ""
+	}
+	data, err := c.DownloadAny(context.Background(), e.Message)
+	if err != nil {
+		return ""
+	}
+	dir := filepath.Join(filepath.Dir(t.dbPath), "wa-media")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return ""
+	}
+	path := filepath.Join(dir, mediaFileName(e))
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return ""
+	}
+	return path
+}
+
+// mediaFileName derives a download filename: a document's own name when present,
+// otherwise the message id with an extension inferred from the mimetype.
+func mediaFileName(e *events.Message) string {
+	m := e.Message
+	if doc := m.GetDocumentMessage(); doc != nil {
+		if fn := strings.TrimSpace(doc.GetFileName()); fn != "" {
+			return "wa-" + sanitizeName(fn)
+		}
+	}
+	var mt string
+	switch {
+	case m.GetImageMessage() != nil:
+		mt = m.GetImageMessage().GetMimetype()
+	case m.GetVideoMessage() != nil:
+		mt = m.GetVideoMessage().GetMimetype()
+	case m.GetAudioMessage() != nil:
+		mt = m.GetAudioMessage().GetMimetype()
+	case m.GetDocumentMessage() != nil:
+		mt = m.GetDocumentMessage().GetMimetype()
+	}
+	ext := ".bin"
+	if i := strings.IndexByte(mt, ';'); i >= 0 {
+		mt = mt[:i]
+	}
+	if exts, _ := mime.ExtensionsByType(strings.TrimSpace(mt)); len(exts) > 0 {
+		ext = exts[0]
+	}
+	id := e.Info.ID
+	if id == "" {
+		id = "file"
+	}
+	return "wa-" + sanitizeName(id) + ext
+}
+
+func sanitizeName(s string) string {
+	s = filepath.Base(strings.TrimSpace(s))
+	s = strings.NewReplacer("/", "_", "\\", "_", "\n", "_", "\r", "_", " ", "_").Replace(s)
+	if s == "" || s == "." || s == ".." {
+		return "file"
+	}
+	return s
 }
 
 // messageKind classifies a message using the same vocabulary the agent bridge
