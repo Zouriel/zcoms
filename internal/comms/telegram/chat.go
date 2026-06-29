@@ -7,6 +7,35 @@ import (
 	"time"
 )
 
+// FetchUserHandle returns a user's "@username" (the stable handle the agent
+// tier keys allow-list, claims, and contacts on), or "" when the user has no
+// public username. It tolerates both the legacy `username` field and the newer
+// `usernames.active_usernames` shape.
+func FetchUserHandle(tdjson *TDJSON, clientID int32, userID int64) (string, error) {
+	req := fmt.Sprintf(`{"@type":"getUser","user_id":%d}`, userID)
+	resp, err := SendRequestAndWait(tdjson, clientID, req, "get-user-handle", 10*time.Second)
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		Username  string `json:"username"`
+		Usernames struct {
+			ActiveUsernames []string `json:"active_usernames"`
+		} `json:"usernames"`
+	}
+	if err := json.Unmarshal([]byte(resp), &out); err != nil {
+		return "", err
+	}
+	handle := strings.TrimSpace(out.Username)
+	if handle == "" && len(out.Usernames.ActiveUsernames) > 0 {
+		handle = strings.TrimSpace(out.Usernames.ActiveUsernames[0])
+	}
+	if handle == "" {
+		return "", nil
+	}
+	return "@" + strings.TrimPrefix(handle, "@"), nil
+}
+
 func FetchUserDisplayName(tdjson *TDJSON, clientID int32, userID int64) (string, error) {
 	req := fmt.Sprintf(`{"@type":"getUser","user_id":%d}`, userID)
 	resp, err := SendRequestAndWait(tdjson, clientID, req, "get-user", 10*time.Second)

@@ -130,6 +130,10 @@ func (d *daemon) pushIncoming(msg telegram.Message) {
 	d.broadcast(ev)
 }
 
+// senderName resolves the value stamped into Event.Sender. It is the user's
+// "@username" handle when they have one — the stable key the agent tier matches
+// against the allow-list, claims, and contacts — falling back to their display
+// name, then "user:<id>", only when there is no public username.
 func (d *daemon) senderName(userID int64) string {
 	d.mu.Lock()
 	if cached, ok := d.nameCache[userID]; ok {
@@ -138,8 +142,13 @@ func (d *daemon) senderName(userID int64) string {
 	}
 	d.mu.Unlock()
 
-	name, err := telegram.FetchUserDisplayName(d.tdjson, d.clientID, userID)
-	if err != nil || name == "" {
+	name := ""
+	if handle, err := telegram.FetchUserHandle(d.tdjson, d.clientID, userID); err == nil && handle != "" {
+		name = handle
+	} else if dn, err := telegram.FetchUserDisplayName(d.tdjson, d.clientID, userID); err == nil && dn != "" {
+		name = dn
+	}
+	if name == "" {
 		name = fmt.Sprintf("user:%d", userID)
 	}
 	d.mu.Lock()
