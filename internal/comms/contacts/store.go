@@ -1,8 +1,12 @@
 // Package contacts is the comms-owned contacts directory (comms.db): people and
-// their per-platform handles. It belongs in comms because it is *addressing* —
+// their per-channel addresses. It belongs in comms because it is *addressing* —
 // every tier above resolves "message <name> on whatever channel" through it via
-// comms/client. The store is the single place both callers (the owner CLI and
-// the running agent) funnel through, so all validation lives here.
+// comms/client. Fields are explicit per channel (phone, email, telegram,
+// whatsapp, discord, viber) rather than a generic handle list: Phone is the
+// universal number that reaches Telegram/WhatsApp/Viber, the per-platform ids
+// override it, and Discord has no phone fallback. The store is the single place
+// both callers (the owner CLI and the running agent) funnel through, so all
+// validation lives here.
 package contacts
 
 import (
@@ -56,185 +60,148 @@ func Open(path string) (*Store, error) {
 func (s *Store) Close() error { return s.db.Close() }
 
 func (s *Store) migrate() error {
-	_, err := s.db.Exec(`
+	if _, err := s.db.Exec(`
 CREATE TABLE IF NOT EXISTS contacts (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
-  note TEXT,
   created_at TEXT,
   updated_at TEXT
-);
-CREATE TABLE IF NOT EXISTS contact_handles (
-  id INTEGER PRIMARY KEY,
-  contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
-  platform TEXT NOT NULL,
-  handle   TEXT NOT NULL,
-  is_primary INTEGER NOT NULL DEFAULT 0,
-  UNIQUE(platform, handle)
-);`)
+);`); err != nil {
+		return err
+	}
+	// Add the channel columns idempotently (SQLite has no ADD COLUMN IF NOT
+	// EXISTS) — this also upgrades a legacy contacts table in place.
+	for _, col := range []string{"phone", "email", "telegram", "whatsapp", "discord", "viber", "note"} {
+		if _, err := s.db.Exec(`ALTER TABLE contacts ADD COLUMN ` + col + ` TEXT`); err != nil &&
+			!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+			return err
+		}
+	}
+	// The old per-handle table is gone — addresses are explicit columns now.
+	_, err := s.db.Exec(`DROP TABLE IF EXISTS contact_handles`)
 	return err
 }
 
 func now() string { return time.Now().UTC().Format(time.RFC3339) }
 
-// --- validation (lives in the store; both callers pass through here) ---------
+// selectCols is the column list every read scans, in scanContact order.
+const selectCols = `id, name,
+	COALESCE(phone,''), COALESCE(email,''), COALESCE(telegram,''),
+	COALESCE(whatsapp,''), COALESCE(discord,''), COALESCE(viber,''),
+	COALESCE(note,'')`
 
-var knownPlatforms = map[string]bool{
-	"telegram": true, "whatsapp": true, "discord": true, "viber": true,
+func scanContact(sc interface{ Scan(...any) error }) (client.Contact, error) {
+	var c client.Contact
+	err := sc.Scan(&c.ID, &c.Name, &c.Phone, &c.Email, &c.Telegram, &c.WhatsApp, &c.Discord, &c.Viber, &c.Note)
+	return c, err
 }
 
-func validateHandle(h client.ContactHandle) error {
-	if strings.TrimSpace(h.Platform) == "" || strings.TrimSpace(h.Handle) == "" {
-		return fmt.Errorf("handle needs a platform and a handle")
+// normalize trims every field and tidies the telegram handle (a bare username
+// gets its leading @, a phone number is left as-is).
+func normalize(c *client.Contact) {
+	c.Name = strings.TrimSpace(c.Name)
+	c.Phone = strings.TrimSpace(c.Phone)
+	c.Email = strings.TrimSpace(c.Email)
+	c.WhatsApp = strings.TrimSpace(c.WhatsApp)
+	c.Discord = strings.TrimSpace(c.Discord)
+	c.Viber = strings.TrimSpace(c.Viber)
+	c.Note = strings.TrimSpace(c.Note)
+	tg := strings.TrimSpace(c.Telegram)
+	if tg != "" && !strings.HasPrefix(tg, "@") && !looksLikePhone(tg) {
+		tg = "@" + tg
 	}
-	if !knownPlatforms[strings.ToLower(h.Platform)] {
-		return fmt.Errorf("unknown platform %q (want telegram|whatsapp|discord|viber)", h.Platform)
+	c.Telegram = tg
+}
+
+func looksLikePhone(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
 	}
-	return nil
+	if s[0] == '+' {
+		return true
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // --- contacts CRUD -----------------------------------------------------------
 
-// List returns every contact with its handles, ordered by name.
+// List returns every contact, ordered by name.
 func (s *Store) List() ([]client.Contact, error) {
-	rows, err := s.db.Query(`SELECT id, name, COALESCE(note,'') FROM contacts ORDER BY name`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []client.Contact
-	for rows.Next() {
-		var c client.Contact
-		if err := rows.Scan(&c.ID, &c.Name, &c.Note); err != nil {
-			return nil, err
-		}
-		out = append(out, c)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	for i := range out {
-		h, err := s.handlesFor(out[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		out[i].Handles = h
-	}
-	return out, nil
+	return s.query(`SELECT ` + selectCols + ` FROM contacts ORDER BY name`)
 }
 
-// Get returns one contact (with handles) by id.
+// Get returns one contact by id.
 func (s *Store) Get(id int64) (client.Contact, error) {
-	var c client.Contact
-	err := s.db.QueryRow(`SELECT id, name, COALESCE(note,'') FROM contacts WHERE id=?`, id).
-		Scan(&c.ID, &c.Name, &c.Note)
-	if err != nil {
-		return c, err
-	}
-	c.Handles, err = s.handlesFor(id)
-	return c, err
+	return scanContact(s.db.QueryRow(`SELECT `+selectCols+` FROM contacts WHERE id=?`, id))
 }
 
 // Resolve returns contacts whose name matches (case-insensitive, exact then
-// prefix), each with its handles — so callers can address a person by name.
+// prefix), so callers can address a person by name.
 func (s *Store) Resolve(name string) ([]client.Contact, error) {
 	name = strings.TrimSpace(name)
-	rows, err := s.db.Query(
-		`SELECT id, name, COALESCE(note,'') FROM contacts
+	return s.query(
+		`SELECT `+selectCols+` FROM contacts
 		 WHERE name=? COLLATE NOCASE OR name LIKE ? COLLATE NOCASE ORDER BY name`,
 		name, name+"%")
+}
+
+func (s *Store) query(q string, args ...any) ([]client.Contact, error) {
+	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []client.Contact
 	for rows.Next() {
-		var c client.Contact
-		if err := rows.Scan(&c.ID, &c.Name, &c.Note); err != nil {
-			return nil, err
-		}
-		out = append(out, c)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	for i := range out {
-		h, err := s.handlesFor(out[i].ID)
+		c, err := scanContact(rows)
 		if err != nil {
 			return nil, err
 		}
-		out[i].Handles = h
-	}
-	return out, nil
-}
-
-func (s *Store) handlesFor(contactID int64) ([]client.ContactHandle, error) {
-	rows, err := s.db.Query(
-		`SELECT id, contact_id, platform, handle, is_primary FROM contact_handles WHERE contact_id=? ORDER BY is_primary DESC, platform`,
-		contactID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []client.ContactHandle
-	for rows.Next() {
-		var h client.ContactHandle
-		var prim int
-		if err := rows.Scan(&h.ID, &h.ContactID, &h.Platform, &h.Handle, &prim); err != nil {
-			return nil, err
-		}
-		h.IsPrimary = prim == 1
-		out = append(out, h)
+		out = append(out, c)
 	}
 	return out, rows.Err()
 }
 
-// Create inserts a contact (and any handles it carries), returning it with ids.
+// Create inserts a contact, returning it with its new id.
 func (s *Store) Create(_ Caller, c client.Contact) (client.Contact, error) {
-	if strings.TrimSpace(c.Name) == "" {
+	normalize(&c)
+	if c.Name == "" {
 		return c, fmt.Errorf("a contact needs a name")
 	}
-	for _, h := range c.Handles {
-		if err := validateHandle(h); err != nil {
-			return c, err
-		}
-	}
-	tx, err := s.db.Begin()
-	if err != nil {
-		return c, err
-	}
-	defer tx.Rollback()
-	res, err := tx.Exec(`INSERT INTO contacts(name, note, created_at, updated_at) VALUES(?,?,?,?)`,
-		c.Name, c.Note, now(), now())
+	res, err := s.db.Exec(
+		`INSERT INTO contacts(name, phone, email, telegram, whatsapp, discord, viber, note, created_at, updated_at)
+		 VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		c.Name, c.Phone, c.Email, c.Telegram, c.WhatsApp, c.Discord, c.Viber, c.Note, now(), now())
 	if err != nil {
 		return c, err
 	}
 	c.ID, _ = res.LastInsertId()
-	for i, h := range c.Handles {
-		hres, err := tx.Exec(`INSERT INTO contact_handles(contact_id, platform, handle, is_primary) VALUES(?,?,?,?)`,
-			c.ID, strings.ToLower(h.Platform), h.Handle, boolToInt(h.IsPrimary))
-		if err != nil {
-			return c, handleErr(err)
-		}
-		c.Handles[i].ID, _ = hres.LastInsertId()
-		c.Handles[i].ContactID = c.ID
-	}
-	return c, tx.Commit()
+	return c, nil
 }
 
-// Update changes a contact's name/note (the only updatable columns).
-func (s *Store) Update(_ Caller, id int64, name, note string) error {
-	if strings.TrimSpace(name) == "" {
+// Update overwrites every channel field of a contact (addressed by c.ID).
+func (s *Store) Update(_ Caller, c client.Contact) error {
+	normalize(&c)
+	if c.Name == "" {
 		return fmt.Errorf("a contact needs a name")
 	}
-	res, err := s.db.Exec(`UPDATE contacts SET name=?, note=?, updated_at=? WHERE id=?`, name, note, now(), id)
+	res, err := s.db.Exec(
+		`UPDATE contacts SET name=?, phone=?, email=?, telegram=?, whatsapp=?, discord=?, viber=?, note=?, updated_at=?
+		 WHERE id=?`,
+		c.Name, c.Phone, c.Email, c.Telegram, c.WhatsApp, c.Discord, c.Viber, c.Note, now(), c.ID)
 	if err != nil {
 		return err
 	}
-	return mustAffect(res, id)
+	return mustAffect(res, c.ID)
 }
 
-// Delete removes a contact and (via FK cascade) its handles.
+// Delete removes a contact.
 func (s *Store) Delete(_ Caller, id int64) error {
 	res, err := s.db.Exec(`DELETE FROM contacts WHERE id=?`, id)
 	if err != nil {
@@ -243,36 +210,8 @@ func (s *Store) Delete(_ Caller, id int64) error {
 	return mustAffect(res, id)
 }
 
-// AddHandle attaches a handle to a contact, enforcing unique (platform, handle).
-func (s *Store) AddHandle(_ Caller, contactID int64, h client.ContactHandle) (client.ContactHandle, error) {
-	if err := validateHandle(h); err != nil {
-		return h, err
-	}
-	res, err := s.db.Exec(`INSERT INTO contact_handles(contact_id, platform, handle, is_primary) VALUES(?,?,?,?)`,
-		contactID, strings.ToLower(h.Platform), h.Handle, boolToInt(h.IsPrimary))
-	if err != nil {
-		return h, handleErr(err)
-	}
-	h.ID, _ = res.LastInsertId()
-	h.ContactID = contactID
-	return h, nil
-}
-
-// RemoveHandle deletes a handle by (platform, handle).
-func (s *Store) RemoveHandle(_ Caller, platform, handle string) error {
-	res, err := s.db.Exec(`DELETE FROM contact_handles WHERE platform=? AND handle=?`, strings.ToLower(platform), handle)
-	if err != nil {
-		return err
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return fmt.Errorf("no %s handle %q", platform, handle)
-	}
-	return nil
-}
-
 // Upsert inserts or updates a set of contacts by name (bulk path for the agent
-// and importers, which write whole people with several handles at once).
+// and importers). An existing name is overwritten with the incoming fields.
 func (s *Store) Upsert(caller Caller, cs []client.Contact) error {
 	for _, c := range cs {
 		existing, err := s.Resolve(c.Name)
@@ -280,51 +219,25 @@ func (s *Store) Upsert(caller Caller, cs []client.Contact) error {
 			return err
 		}
 		var id int64
-		exact := -1
-		for i, e := range existing {
+		for _, e := range existing {
 			if strings.EqualFold(e.Name, c.Name) {
-				exact = i
+				id = e.ID
 				break
 			}
 		}
-		if exact >= 0 {
-			id = existing[exact].ID
-			if err := s.Update(caller, id, c.Name, c.Note); err != nil {
+		if id != 0 {
+			c.ID = id
+			if err := s.Update(caller, c); err != nil {
 				return err
 			}
-		} else {
-			created, err := s.Create(caller, client.Contact{Name: c.Name, Note: c.Note})
-			if err != nil {
-				return err
-			}
-			id = created.ID
-		}
-		for _, h := range c.Handles {
-			// Skip a handle that already exists (unique constraint) — upsert is
-			// idempotent on re-import.
-			if _, err := s.AddHandle(caller, id, h); err != nil && !strings.Contains(err.Error(), "already") {
-				return err
-			}
+		} else if _, err := s.Create(caller, c); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
 // --- helpers -----------------------------------------------------------------
-
-func boolToInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
-}
-
-func handleErr(err error) error {
-	if err != nil && strings.Contains(strings.ToLower(err.Error()), "unique") {
-		return fmt.Errorf("that handle is already registered to a contact (platform+handle must be unique)")
-	}
-	return err
-}
 
 func mustAffect(res sql.Result, id int64) error {
 	n, _ := res.RowsAffected()

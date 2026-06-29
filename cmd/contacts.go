@@ -23,18 +23,33 @@ func openContacts() (*contacts.Store, error) {
 	return contacts.Open(filepath.Join(dir, "comms.db"))
 }
 
+// channelFlags registers the per-channel fields shared by `add` and `edit` and
+// returns accessors. Phone is the universal number (Telegram/WhatsApp/Viber);
+// Discord needs its own id. Discord/Viber are stored for the future.
+func channelFlags(c *cobra.Command, t *client.Contact) {
+	c.Flags().StringVar(&t.Phone, "phone", "", "Mobile number (reaches Telegram/WhatsApp/Viber)")
+	c.Flags().StringVar(&t.Email, "email", "", "Email address")
+	c.Flags().StringVar(&t.Telegram, "telegram", "", "Telegram @handle (falls back to --phone)")
+	c.Flags().StringVar(&t.WhatsApp, "whatsapp", "", "WhatsApp id/number (falls back to --phone)")
+	c.Flags().StringVar(&t.Discord, "discord", "", "Discord id (no phone fallback; future)")
+	c.Flags().StringVar(&t.Viber, "viber", "", "Viber id (falls back to --phone; future)")
+	c.Flags().StringVar(&t.Note, "note", "", "A free-text note")
+}
+
 func init() {
 	contactsCmd := &cobra.Command{
 		Use:   "contacts",
-		Short: "Manage the contacts directory (people + their per-platform handles)",
-		Long: "The comms-owned address book (comms.db): a person can have several handles\n" +
-			"(Ali = @ali on Telegram, +960… on WhatsApp). Every tier resolves \"message Ali\n" +
-			"on whatever channel\" through here.",
+		Short: "Manage the contacts directory (people + their per-channel addresses)",
+		Long: "The comms-owned address book (comms.db). Each contact has explicit channels:\n" +
+			"a phone number (which reaches Telegram, WhatsApp and Viber), an email, and\n" +
+			"per-platform ids (telegram/whatsapp/discord/viber) that override the phone.\n" +
+			"Discord needs its own id — a phone can't reach it. Every tier resolves\n" +
+			"\"message <name> on whatever channel\" through here.",
 	}
 
 	listCmd := &cobra.Command{
 		Use:   "list",
-		Short: "List all contacts and their handles",
+		Short: "List all contacts and their channels",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			s, err := openContacts()
 			if err != nil {
@@ -46,28 +61,25 @@ func init() {
 				return err
 			}
 			if len(cs) == 0 {
-				fmt.Println("No contacts yet. Add one with `zc contacts add <name>`.")
+				fmt.Println("No contacts yet. Add one with `zc contacts add <name> --phone +960… --telegram @x`.")
 				return nil
 			}
 			for _, c := range cs {
-				fmt.Printf("#%d  %s", c.ID, c.Name)
-				if c.Note != "" {
-					fmt.Printf("  — %s", c.Note)
-				}
-				fmt.Println()
-				for _, h := range c.Handles {
-					star := ""
-					if h.IsPrimary {
-						star = " *"
+				fmt.Printf("#%d  %s\n", c.ID, c.Name)
+				for _, f := range []struct{ label, val string }{
+					{"phone", c.Phone}, {"email", c.Email}, {"telegram", c.Telegram},
+					{"whatsapp", c.WhatsApp}, {"discord", c.Discord}, {"viber", c.Viber}, {"note", c.Note},
+				} {
+					if f.val != "" {
+						fmt.Printf("      %-9s %s\n", f.label+":", f.val)
 					}
-					fmt.Printf("      %s: %s%s\n", h.Platform, h.Handle, star)
 				}
 			}
 			return nil
 		},
 	}
 
-	var addNote string
+	var addFields client.Contact
 	addCmd := &cobra.Command{
 		Use:   "add <name>",
 		Short: "Add a contact",
@@ -78,7 +90,8 @@ func init() {
 				return err
 			}
 			defer s.Close()
-			c, err := s.Create(contacts.Owner, client.Contact{Name: strings.Join(args, " "), Note: addNote})
+			addFields.Name = strings.Join(args, " ")
+			c, err := s.Create(contacts.Owner, addFields)
 			if err != nil {
 				return err
 			}
@@ -86,13 +99,13 @@ func init() {
 			return nil
 		},
 	}
-	addCmd.Flags().StringVar(&addNote, "note", "", "An optional note about the contact")
+	channelFlags(addCmd, &addFields)
 
-	var editNote string
+	var editFields client.Contact
 	editCmd := &cobra.Command{
-		Use:   "edit <id> <name>",
-		Short: "Rename a contact / change its note",
-		Args:  cobra.MinimumNArgs(2),
+		Use:   "edit <id> [name]",
+		Short: "Edit a contact (only the flags you pass are changed)",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil {
@@ -103,18 +116,36 @@ func init() {
 				return err
 			}
 			defer s.Close()
-			if err := s.Update(contacts.Owner, id, strings.Join(args[1:], " "), editNote); err != nil {
+			cur, err := s.Get(id)
+			if err != nil {
+				return err
+			}
+			if len(args) > 1 {
+				cur.Name = strings.Join(args[1:], " ")
+			}
+			// Apply only the channel flags the user actually set, so an edit is a
+			// patch over the existing row (the store does a full overwrite).
+			for name, dst := range map[string]*string{
+				"phone": &cur.Phone, "email": &cur.Email, "telegram": &cur.Telegram,
+				"whatsapp": &cur.WhatsApp, "discord": &cur.Discord, "viber": &cur.Viber, "note": &cur.Note,
+			} {
+				if cmd.Flags().Changed(name) {
+					v, _ := cmd.Flags().GetString(name)
+					*dst = v
+				}
+			}
+			if err := s.Update(contacts.Owner, cur); err != nil {
 				return err
 			}
 			fmt.Println("Updated ✅")
 			return nil
 		},
 	}
-	editCmd.Flags().StringVar(&editNote, "note", "", "Replace the contact's note")
+	channelFlags(editCmd, &editFields)
 
 	rmCmd := &cobra.Command{
 		Use:   "rm <id>",
-		Short: "Remove a contact (and its handles)",
+		Short: "Remove a contact",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.ParseInt(args[0], 10, 64)
@@ -134,51 +165,6 @@ func init() {
 		},
 	}
 
-	handleCmd := &cobra.Command{Use: "handle", Short: "Manage a contact's platform handles"}
-	var primary bool
-	handleAdd := &cobra.Command{
-		Use:   "add <contact-id> <platform> <handle>",
-		Short: "Attach a platform handle (telegram|whatsapp|discord|viber)",
-		Args:  cobra.ExactArgs(3),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := strconv.ParseInt(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("bad id %q", args[0])
-			}
-			s, err := openContacts()
-			if err != nil {
-				return err
-			}
-			defer s.Close()
-			if _, err := s.AddHandle(contacts.Owner, id, client.ContactHandle{
-				Platform: args[1], Handle: args[2], IsPrimary: primary,
-			}); err != nil {
-				return err
-			}
-			fmt.Println("Handle added ✅")
-			return nil
-		},
-	}
-	handleAdd.Flags().BoolVar(&primary, "primary", false, "Mark this handle as the contact's primary for its platform")
-	handleRm := &cobra.Command{
-		Use:   "rm <platform> <handle>",
-		Short: "Remove a platform handle",
-		Args:  cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			s, err := openContacts()
-			if err != nil {
-				return err
-			}
-			defer s.Close()
-			if err := s.RemoveHandle(contacts.Owner, args[0], args[1]); err != nil {
-				return err
-			}
-			fmt.Println("Handle removed ✅")
-			return nil
-		},
-	}
-	handleCmd.AddCommand(handleAdd, handleRm)
-
-	contactsCmd.AddCommand(listCmd, addCmd, editCmd, rmCmd, handleCmd)
+	contactsCmd.AddCommand(listCmd, addCmd, editCmd, rmCmd)
 	rootCmd.AddCommand(contactsCmd)
 }

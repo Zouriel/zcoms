@@ -9,7 +9,10 @@
 // across versions; breaking changes bump ProtocolVersion (see version.go).
 package client
 
-import "path/filepath"
+import (
+	"path/filepath"
+	"strings"
+)
 
 const socketName = "daemon.sock"
 
@@ -49,11 +52,9 @@ type Request struct {
 	// subscribe: which event stream to receive (a module/role name).
 	Role string `json:"role,omitempty"`
 
-	// Contacts store ops (comms.db). Contact carries the row for create/update;
-	// Platform/Handle address a single handle.
-	Contact  *Contact `json:"contact,omitempty"`
-	Platform string   `json:"platform,omitempty"`
-	Handle   string   `json:"handle,omitempty"`
+	// Contacts store ops (comms.db). Contact carries the full row for
+	// create/update/upsert (and just the id for delete).
+	Contact *Contact `json:"contact,omitempty"`
 
 	// Errand ops.
 	Brief     string `json:"brief,omitempty"`
@@ -99,23 +100,50 @@ type Event struct {
 	Date      int64  `json:"date"`
 }
 
-// Contact is a person in the comms-owned contacts directory (comms.db), with
-// their per-platform handles. It is addressing data — every tier resolves
-// "message <name> on whatever channel" through here.
+// Contact is a person in the comms-owned contacts directory (comms.db). It is
+// addressing data — every tier resolves "message <name> on whatever channel"
+// through here. Fields are explicit per channel rather than a generic handle
+// list: Phone is the universal number that addresses Telegram, WhatsApp and
+// Viber; the per-platform ids override it where a contact's handle differs (or,
+// for Discord, where there is no phone to fall back to). Discord and Viber are
+// reserved for future transports — stored now, not yet routed.
 type Contact struct {
-	ID      int64           `json:"id,omitempty"`
-	Name    string          `json:"name"`
-	Note    string          `json:"note,omitempty"`
-	Handles []ContactHandle `json:"handles,omitempty"`
+	ID       int64  `json:"id,omitempty"`
+	Name     string `json:"name"`
+	Phone    string `json:"phone,omitempty"`    // mobile number; addresses Telegram/WhatsApp/Viber
+	Email    string `json:"email,omitempty"`    // contact info (not a messaging channel)
+	Telegram string `json:"telegram,omitempty"` // @handle or id; falls back to Phone
+	WhatsApp string `json:"whatsapp,omitempty"` // wa id/number; falls back to Phone
+	Discord  string `json:"discord,omitempty"`  // discord id; NO phone fallback (future)
+	Viber    string `json:"viber,omitempty"`    // viber id; falls back to Phone (future)
+	Note     string `json:"note,omitempty"`
 }
 
-// ContactHandle is one platform address for a contact.
-type ContactHandle struct {
-	ID        int64  `json:"id,omitempty"`
-	ContactID int64  `json:"contact_id,omitempty"`
-	Platform  string `json:"platform"` // 'telegram'|'whatsapp'|'discord'|'viber'
-	Handle    string `json:"handle"`   // '@ali' | '+9607...' | discord id
-	IsPrimary bool   `json:"is_primary,omitempty"`
+// Address returns the contact's address on a platform: the platform-specific id
+// when set, otherwise the Phone number — because a phone reaches Telegram,
+// WhatsApp and Viber, but never Discord. Returns "" when the contact has no
+// usable address there.
+func (c Contact) Address(platform string) string {
+	switch strings.ToLower(strings.TrimSpace(platform)) {
+	case "telegram":
+		return firstNonEmpty(c.Telegram, c.Phone)
+	case "whatsapp":
+		return firstNonEmpty(c.WhatsApp, c.Phone)
+	case "viber":
+		return firstNonEmpty(c.Viber, c.Phone)
+	case "discord":
+		return c.Discord // no phone fallback
+	}
+	return ""
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // Response is the daemon's reply to a Request.

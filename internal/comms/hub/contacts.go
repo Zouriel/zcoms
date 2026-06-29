@@ -40,7 +40,7 @@ func (d *daemon) handleContactOp(conn net.Conn, req client.Request) {
 			writeIPC(conn, client.Response{Error: "contact_update needs a contact"})
 			return
 		}
-		err := d.contacts.Update(caller, req.Contact.ID, req.Contact.Name, req.Contact.Note)
+		err := d.contacts.Update(caller, *req.Contact)
 		reply(conn, client.Response{OK: true}, err)
 
 	case "contact_delete":
@@ -57,21 +57,6 @@ func (d *daemon) handleContactOp(conn net.Conn, req client.Request) {
 			cs = append(cs, *req.Contact)
 		}
 		err := d.contacts.Upsert(caller, cs)
-		reply(conn, client.Response{OK: true}, err)
-
-	case "contact_handle_add":
-		if req.Contact == nil {
-			writeIPC(conn, client.Response{Error: "contact_handle_add needs a contact id and handle"})
-			return
-		}
-		h, err := d.contacts.AddHandle(caller, req.Contact.ID, client.ContactHandle{
-			Platform: req.Platform, Handle: req.Handle,
-		})
-		_ = h
-		reply(conn, client.Response{OK: true}, err)
-
-	case "contact_handle_remove":
-		err := d.contacts.RemoveHandle(caller, req.Platform, req.Handle)
 		reply(conn, client.Response{OK: true}, err)
 	}
 }
