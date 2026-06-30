@@ -27,10 +27,12 @@ func openContacts() (*contacts.Store, error) {
 // returns accessors. Phone is the universal number (Telegram/WhatsApp/Viber);
 // Discord needs its own id. Discord/Viber are stored for the future.
 func channelFlags(c *cobra.Command, t *client.Contact) {
+	c.Flags().StringSliceVar(&t.Aliases, "alias", nil, "Alternate name (repeatable or comma-separated; unique across all names+aliases)")
 	c.Flags().StringVar(&t.Phone, "phone", "", "Mobile number (reaches Telegram/WhatsApp/Viber)")
 	c.Flags().StringVar(&t.Email, "email", "", "Email address")
 	c.Flags().StringVar(&t.Telegram, "telegram", "", "Telegram @handle (falls back to --phone)")
 	c.Flags().StringVar(&t.WhatsApp, "whatsapp", "", "WhatsApp id/number (falls back to --phone)")
+	c.Flags().StringVar(&t.Instagram, "instagram", "", "Instagram @handle (no phone fallback; future)")
 	c.Flags().StringVar(&t.Discord, "discord", "", "Discord id (no phone fallback; future)")
 	c.Flags().StringVar(&t.Viber, "viber", "", "Viber id (falls back to --phone; future)")
 	c.Flags().StringVar(&t.Note, "note", "", "A free-text note")
@@ -66,12 +68,16 @@ func init() {
 			}
 			for _, c := range cs {
 				fmt.Printf("#%d  %s\n", c.ID, c.Name)
+				if len(c.Aliases) > 0 {
+					fmt.Printf("      %-10s %s\n", "aliases:", strings.Join(c.Aliases, ", "))
+				}
 				for _, f := range []struct{ label, val string }{
 					{"phone", c.Phone}, {"email", c.Email}, {"telegram", c.Telegram},
-					{"whatsapp", c.WhatsApp}, {"discord", c.Discord}, {"viber", c.Viber}, {"note", c.Note},
+					{"whatsapp", c.WhatsApp}, {"instagram", c.Instagram},
+					{"discord", c.Discord}, {"viber", c.Viber}, {"note", c.Note},
 				} {
 					if f.val != "" {
-						fmt.Printf("      %-9s %s\n", f.label+":", f.val)
+						fmt.Printf("      %-10s %s\n", f.label+":", f.val)
 					}
 				}
 			}
@@ -127,12 +133,17 @@ func init() {
 			// patch over the existing row (the store does a full overwrite).
 			for name, dst := range map[string]*string{
 				"phone": &cur.Phone, "email": &cur.Email, "telegram": &cur.Telegram,
-				"whatsapp": &cur.WhatsApp, "discord": &cur.Discord, "viber": &cur.Viber, "note": &cur.Note,
+				"whatsapp": &cur.WhatsApp, "instagram": &cur.Instagram,
+				"discord": &cur.Discord, "viber": &cur.Viber, "note": &cur.Note,
 			} {
 				if cmd.Flags().Changed(name) {
 					v, _ := cmd.Flags().GetString(name)
 					*dst = v
 				}
+			}
+			// Aliases is a list flag — replace wholesale when --alias was passed.
+			if cmd.Flags().Changed("alias") {
+				cur.Aliases, _ = cmd.Flags().GetStringSlice("alias")
 			}
 			if err := s.Update(contacts.Owner, cur); err != nil {
 				return err

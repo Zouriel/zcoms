@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS contacts (
 	}
 	// Add the channel columns idempotently (SQLite has no ADD COLUMN IF NOT
 	// EXISTS) — this also upgrades a legacy contacts table in place.
-	for _, col := range []string{"phone", "email", "telegram", "whatsapp", "discord", "viber", "note"} {
+	for _, col := range []string{"phone", "email", "telegram", "whatsapp", "instagram", "discord", "viber", "note", "aliases"} {
 		if _, err := s.db.Exec(`ALTER TABLE contacts ADD COLUMN ` + col + ` TEXT`); err != nil &&
 			!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 			return err
@@ -87,14 +87,32 @@ func now() string { return time.Now().UTC().Format(time.RFC3339) }
 // selectCols is the column list every read scans, in scanContact order.
 const selectCols = `id, name,
 	COALESCE(phone,''), COALESCE(email,''), COALESCE(telegram,''),
-	COALESCE(whatsapp,''), COALESCE(discord,''), COALESCE(viber,''),
-	COALESCE(note,'')`
+	COALESCE(whatsapp,''), COALESCE(instagram,''), COALESCE(discord,''),
+	COALESCE(viber,''), COALESCE(note,''), COALESCE(aliases,'')`
 
 func scanContact(sc interface{ Scan(...any) error }) (client.Contact, error) {
 	var c client.Contact
-	err := sc.Scan(&c.ID, &c.Name, &c.Phone, &c.Email, &c.Telegram, &c.WhatsApp, &c.Discord, &c.Viber, &c.Note)
+	var aliases string
+	err := sc.Scan(&c.ID, &c.Name, &c.Phone, &c.Email, &c.Telegram, &c.WhatsApp,
+		&c.Instagram, &c.Discord, &c.Viber, &c.Note, &aliases)
+	c.Aliases = splitAliases(aliases)
 	return c, err
 }
+
+// Aliases are stored as a newline-delimited TEXT blob in one column (the
+// directory is small + personal, so a side table isn't worth it). splitAliases
+// reads it back into trimmed, non-empty entries; joinAliases writes it.
+func splitAliases(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, "\n") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func joinAliases(a []string) string { return strings.Join(a, "\n") }
 
 // normalize trims every field and tidies the telegram handle (a bare username
 // gets its leading @, a phone number is left as-is).
@@ -111,6 +129,32 @@ func normalize(c *client.Contact) {
 		tg = "@" + tg
 	}
 	c.Telegram = tg
+	ig := strings.TrimSpace(c.Instagram)
+	if ig != "" && !strings.HasPrefix(ig, "@") {
+		ig = "@" + ig
+	}
+	c.Instagram = ig
+	c.Aliases = normAliases(c.Aliases)
+}
+
+// normAliases trims each alias, drops empties, and de-duplicates
+// case-insensitively (keeping the first spelling seen).
+func normAliases(in []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, a := range in {
+		a = strings.TrimSpace(a)
+		if a == "" {
+			continue
+		}
+		k := strings.ToLower(a)
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, a)
+	}
+	return out
 }
 
 func looksLikePhone(s string) bool {
@@ -141,14 +185,81 @@ func (s *Store) Get(id int64) (client.Contact, error) {
 	return scanContact(s.db.QueryRow(`SELECT `+selectCols+` FROM contacts WHERE id=?`, id))
 }
 
-// Resolve returns contacts whose name matches (case-insensitive, exact then
-// prefix), so callers can address a person by name.
+// Resolve returns contacts whose name OR any alias matches (case-insensitive,
+// exact matches first then prefix matches), so callers can address a person by
+// either their canonical name or a nickname. Aliases live in a delimited column,
+// so the match is done in Go over the (small, personal) directory.
 func (s *Store) Resolve(name string) ([]client.Contact, error) {
 	name = strings.TrimSpace(name)
-	return s.query(
-		`SELECT `+selectCols+` FROM contacts
-		 WHERE name=? COLLATE NOCASE OR name LIKE ? COLLATE NOCASE ORDER BY name`,
-		name, name+"%")
+	all, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	want := strings.ToLower(name)
+	var exact, prefix []client.Contact
+	for _, c := range all {
+		hitExact, hitPrefix := false, false
+		for _, cand := range append([]string{c.Name}, c.Aliases...) {
+			lc := strings.ToLower(strings.TrimSpace(cand))
+			if lc == want {
+				hitExact = true
+				break
+			}
+			if strings.HasPrefix(lc, want) {
+				hitPrefix = true
+			}
+		}
+		if hitExact {
+			exact = append(exact, c)
+		} else if hitPrefix {
+			prefix = append(prefix, c)
+		}
+	}
+	return append(exact, prefix...), nil
+}
+
+// ensureUnique enforces the directory-wide rule that no name or alias may be
+// shared: a contact's own name + aliases must be internally distinct, and none
+// may collide (case-insensitively) with any name or alias of another contact.
+// id is the row being written (0 on create) so it can be excluded.
+func (s *Store) ensureUnique(id int64, c client.Contact) error {
+	mine := append([]string{c.Name}, c.Aliases...)
+	seen := map[string]bool{}
+	for _, t := range mine {
+		k := strings.ToLower(strings.TrimSpace(t))
+		if k == "" {
+			continue
+		}
+		if seen[k] {
+			return fmt.Errorf("%q is listed twice for this contact (name and aliases must be distinct)", strings.TrimSpace(t))
+		}
+		seen[k] = true
+	}
+	all, err := s.List()
+	if err != nil {
+		return err
+	}
+	taken := map[string]string{} // lower token -> owning contact's display name
+	for _, e := range all {
+		if e.ID == id {
+			continue
+		}
+		for _, t := range append([]string{e.Name}, e.Aliases...) {
+			if k := strings.ToLower(strings.TrimSpace(t)); k != "" {
+				taken[k] = e.Name
+			}
+		}
+	}
+	for _, t := range mine {
+		k := strings.ToLower(strings.TrimSpace(t))
+		if k == "" {
+			continue
+		}
+		if owner, ok := taken[k]; ok {
+			return fmt.Errorf("%q already belongs to contact %q (names and aliases must be unique)", strings.TrimSpace(t), owner)
+		}
+	}
+	return nil
 }
 
 func (s *Store) query(q string, args ...any) ([]client.Contact, error) {
@@ -174,10 +285,13 @@ func (s *Store) Create(_ Caller, c client.Contact) (client.Contact, error) {
 	if c.Name == "" {
 		return c, fmt.Errorf("a contact needs a name")
 	}
+	if err := s.ensureUnique(0, c); err != nil {
+		return c, err
+	}
 	res, err := s.db.Exec(
-		`INSERT INTO contacts(name, phone, email, telegram, whatsapp, discord, viber, note, created_at, updated_at)
-		 VALUES(?,?,?,?,?,?,?,?,?,?)`,
-		c.Name, c.Phone, c.Email, c.Telegram, c.WhatsApp, c.Discord, c.Viber, c.Note, now(), now())
+		`INSERT INTO contacts(name, phone, email, telegram, whatsapp, instagram, discord, viber, note, aliases, created_at, updated_at)
+		 VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		c.Name, c.Phone, c.Email, c.Telegram, c.WhatsApp, c.Instagram, c.Discord, c.Viber, c.Note, joinAliases(c.Aliases), now(), now())
 	if err != nil {
 		return c, err
 	}
@@ -191,10 +305,13 @@ func (s *Store) Update(_ Caller, c client.Contact) error {
 	if c.Name == "" {
 		return fmt.Errorf("a contact needs a name")
 	}
+	if err := s.ensureUnique(c.ID, c); err != nil {
+		return err
+	}
 	res, err := s.db.Exec(
-		`UPDATE contacts SET name=?, phone=?, email=?, telegram=?, whatsapp=?, discord=?, viber=?, note=?, updated_at=?
+		`UPDATE contacts SET name=?, phone=?, email=?, telegram=?, whatsapp=?, instagram=?, discord=?, viber=?, note=?, aliases=?, updated_at=?
 		 WHERE id=?`,
-		c.Name, c.Phone, c.Email, c.Telegram, c.WhatsApp, c.Discord, c.Viber, c.Note, now(), c.ID)
+		c.Name, c.Phone, c.Email, c.Telegram, c.WhatsApp, c.Instagram, c.Discord, c.Viber, c.Note, joinAliases(c.Aliases), now(), c.ID)
 	if err != nil {
 		return err
 	}

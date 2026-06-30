@@ -138,15 +138,17 @@ type Event struct {
 // for Discord, where there is no phone to fall back to). Discord and Viber are
 // reserved for future transports — stored now, not yet routed.
 type Contact struct {
-	ID       int64  `json:"id,omitempty"`
-	Name     string `json:"name"`
-	Phone    string `json:"phone,omitempty"`    // mobile number; addresses Telegram/WhatsApp/Viber
-	Email    string `json:"email,omitempty"`    // contact info (not a messaging channel)
-	Telegram string `json:"telegram,omitempty"` // @handle or id; falls back to Phone
-	WhatsApp string `json:"whatsapp,omitempty"` // wa id/number; falls back to Phone
-	Discord  string `json:"discord,omitempty"`  // discord id; NO phone fallback (future)
-	Viber    string `json:"viber,omitempty"`    // viber id; falls back to Phone (future)
-	Note     string `json:"note,omitempty"`
+	ID        int64    `json:"id,omitempty"`
+	Name      string   `json:"name"`
+	Aliases   []string `json:"aliases,omitempty"`   // alternate names; resolvable, unique across all names+aliases
+	Phone     string   `json:"phone,omitempty"`     // mobile number; addresses Telegram/WhatsApp/Viber
+	Email     string   `json:"email,omitempty"`     // contact info (not a messaging channel)
+	Telegram  string   `json:"telegram,omitempty"`  // @handle or id; falls back to Phone
+	WhatsApp  string   `json:"whatsapp,omitempty"`  // wa id/number; falls back to Phone
+	Instagram string   `json:"instagram,omitempty"` // ig @handle; NO phone fallback (future)
+	Discord   string   `json:"discord,omitempty"`   // discord id; NO phone fallback (future)
+	Viber     string   `json:"viber,omitempty"`     // viber id; falls back to Phone (future)
+	Note      string   `json:"note,omitempty"`
 }
 
 // Address returns the contact's address on a platform: the platform-specific id
@@ -159,6 +161,8 @@ func (c Contact) Address(platform string) string {
 		return firstNonEmpty(c.Telegram, c.Phone)
 	case "whatsapp":
 		return firstNonEmpty(c.WhatsApp, c.Phone)
+	case "instagram":
+		return c.Instagram // no phone fallback
 	case "viber":
 		return firstNonEmpty(c.Viber, c.Phone)
 	case "discord":
