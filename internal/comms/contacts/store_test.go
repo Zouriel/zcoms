@@ -24,6 +24,7 @@ func TestAliasesAndInstagram(t *testing.T) {
 		Name:      "Ali",
 		Aliases:   []string{"Aliyya", "  Ali bro ", "aliyya"}, // dup (case) + whitespace
 		Instagram: "ali_g",
+		Github:    "@ali-gh", // leading @ is stripped (github handles have no @)
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -34,6 +35,9 @@ func TestAliasesAndInstagram(t *testing.T) {
 	if c.Instagram != "@ali_g" {
 		t.Fatalf("instagram not @-normalized: %q", c.Instagram)
 	}
+	if c.Github != "ali-gh" {
+		t.Fatalf("github not @-stripped: %q", c.Github)
+	}
 
 	// Aliases survive a round-trip through the store.
 	got, err := s.Get(c.ID)
@@ -42,6 +46,9 @@ func TestAliasesAndInstagram(t *testing.T) {
 	}
 	if len(got.Aliases) != 2 || got.Aliases[0] != "Aliyya" {
 		t.Fatalf("aliases not persisted: %#v", got.Aliases)
+	}
+	if got.Github != "ali-gh" {
+		t.Fatalf("github not persisted: %q", got.Github)
 	}
 }
 

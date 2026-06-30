@@ -35,6 +35,7 @@ func channelFlags(c *cobra.Command, t *client.Contact) {
 	c.Flags().StringVar(&t.Instagram, "instagram", "", "Instagram @handle (no phone fallback; future)")
 	c.Flags().StringVar(&t.Discord, "discord", "", "Discord id (no phone fallback; future)")
 	c.Flags().StringVar(&t.Viber, "viber", "", "Viber id (falls back to --phone; future)")
+	c.Flags().StringVar(&t.Github, "github", "", "GitHub handle (contact info)")
 	c.Flags().StringVar(&t.Note, "note", "", "A free-text note")
 }
 
@@ -74,7 +75,7 @@ func init() {
 				for _, f := range []struct{ label, val string }{
 					{"phone", c.Phone}, {"email", c.Email}, {"telegram", c.Telegram},
 					{"whatsapp", c.WhatsApp}, {"instagram", c.Instagram},
-					{"discord", c.Discord}, {"viber", c.Viber}, {"note", c.Note},
+					{"discord", c.Discord}, {"viber", c.Viber}, {"github", c.Github}, {"note", c.Note},
 				} {
 					if f.val != "" {
 						fmt.Printf("      %-10s %s\n", f.label+":", f.val)
@@ -134,7 +135,7 @@ func init() {
 			for name, dst := range map[string]*string{
 				"phone": &cur.Phone, "email": &cur.Email, "telegram": &cur.Telegram,
 				"whatsapp": &cur.WhatsApp, "instagram": &cur.Instagram,
-				"discord": &cur.Discord, "viber": &cur.Viber, "note": &cur.Note,
+				"discord": &cur.Discord, "viber": &cur.Viber, "github": &cur.Github, "note": &cur.Note,
 			} {
 				if cmd.Flags().Changed(name) {
 					v, _ := cmd.Flags().GetString(name)

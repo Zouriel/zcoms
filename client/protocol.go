@@ -148,6 +148,7 @@ type Contact struct {
 	Instagram string   `json:"instagram,omitempty"` // ig @handle; NO phone fallback (future)
 	Discord   string   `json:"discord,omitempty"`   // discord id; NO phone fallback (future)
 	Viber     string   `json:"viber,omitempty"`     // viber id; falls back to Phone (future)
+	Github    string   `json:"github,omitempty"`    // github handle; contact info (not a messaging channel)
 	Note      string   `json:"note,omitempty"`
 }
 

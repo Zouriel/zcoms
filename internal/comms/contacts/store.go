@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS contacts (
 	}
 	// Add the channel columns idempotently (SQLite has no ADD COLUMN IF NOT
 	// EXISTS) — this also upgrades a legacy contacts table in place.
-	for _, col := range []string{"phone", "email", "telegram", "whatsapp", "instagram", "discord", "viber", "note", "aliases"} {
+	for _, col := range []string{"phone", "email", "telegram", "whatsapp", "instagram", "discord", "viber", "note", "aliases", "github"} {
 		if _, err := s.db.Exec(`ALTER TABLE contacts ADD COLUMN ` + col + ` TEXT`); err != nil &&
 			!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 			return err
@@ -88,13 +88,13 @@ func now() string { return time.Now().UTC().Format(time.RFC3339) }
 const selectCols = `id, name,
 	COALESCE(phone,''), COALESCE(email,''), COALESCE(telegram,''),
 	COALESCE(whatsapp,''), COALESCE(instagram,''), COALESCE(discord,''),
-	COALESCE(viber,''), COALESCE(note,''), COALESCE(aliases,'')`
+	COALESCE(viber,''), COALESCE(github,''), COALESCE(note,''), COALESCE(aliases,'')`
 
 func scanContact(sc interface{ Scan(...any) error }) (client.Contact, error) {
 	var c client.Contact
 	var aliases string
 	err := sc.Scan(&c.ID, &c.Name, &c.Phone, &c.Email, &c.Telegram, &c.WhatsApp,
-		&c.Instagram, &c.Discord, &c.Viber, &c.Note, &aliases)
+		&c.Instagram, &c.Discord, &c.Viber, &c.Github, &c.Note, &aliases)
 	c.Aliases = splitAliases(aliases)
 	return c, err
 }
@@ -123,6 +123,7 @@ func normalize(c *client.Contact) {
 	c.WhatsApp = strings.TrimSpace(c.WhatsApp)
 	c.Discord = strings.TrimSpace(c.Discord)
 	c.Viber = strings.TrimSpace(c.Viber)
+	c.Github = strings.TrimPrefix(strings.TrimSpace(c.Github), "@")
 	c.Note = strings.TrimSpace(c.Note)
 	tg := strings.TrimSpace(c.Telegram)
 	if tg != "" && !strings.HasPrefix(tg, "@") && !looksLikePhone(tg) {
@@ -289,9 +290,9 @@ func (s *Store) Create(_ Caller, c client.Contact) (client.Contact, error) {
 		return c, err
 	}
 	res, err := s.db.Exec(
-		`INSERT INTO contacts(name, phone, email, telegram, whatsapp, instagram, discord, viber, note, aliases, created_at, updated_at)
-		 VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-		c.Name, c.Phone, c.Email, c.Telegram, c.WhatsApp, c.Instagram, c.Discord, c.Viber, c.Note, joinAliases(c.Aliases), now(), now())
+		`INSERT INTO contacts(name, phone, email, telegram, whatsapp, instagram, discord, viber, github, note, aliases, created_at, updated_at)
+		 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		c.Name, c.Phone, c.Email, c.Telegram, c.WhatsApp, c.Instagram, c.Discord, c.Viber, c.Github, c.Note, joinAliases(c.Aliases), now(), now())
 	if err != nil {
 		return c, err
 	}
@@ -309,9 +310,9 @@ func (s *Store) Update(_ Caller, c client.Contact) error {
 		return err
 	}
 	res, err := s.db.Exec(
-		`UPDATE contacts SET name=?, phone=?, email=?, telegram=?, whatsapp=?, instagram=?, discord=?, viber=?, note=?, aliases=?, updated_at=?
+		`UPDATE contacts SET name=?, phone=?, email=?, telegram=?, whatsapp=?, instagram=?, discord=?, viber=?, github=?, note=?, aliases=?, updated_at=?
 		 WHERE id=?`,
-		c.Name, c.Phone, c.Email, c.Telegram, c.WhatsApp, c.Instagram, c.Discord, c.Viber, c.Note, joinAliases(c.Aliases), now(), c.ID)
+		c.Name, c.Phone, c.Email, c.Telegram, c.WhatsApp, c.Instagram, c.Discord, c.Viber, c.Github, c.Note, joinAliases(c.Aliases), now(), c.ID)
 	if err != nil {
 		return err
 	}
