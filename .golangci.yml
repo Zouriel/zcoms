@@ -1,0 +1,22 @@
+version: "2"
+run:
+  timeout: 3m
+  tests: true
+linters:
+  default: none
+  enable: [govet, staticcheck, errcheck, ineffassign, unused, revive]
+  settings:
+    govet: { enable-all: true }
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [errcheck]
+formatters:
+  enable: [gofmt, gofumpt, goimports]
+  settings:
+    gofmt: { simplify: true }
+    gofumpt: { extra-rules: true }
