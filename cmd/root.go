@@ -18,8 +18,10 @@ var rootCmd = &cobra.Command{
 		"commerce) are opt-in tiers — add them with `zc install <agent|team|console|commerce>`.",
 }
 
-var AppConfig config.Config
-var ConfigFilePath string
+var (
+	AppConfig      config.Config
+	ConfigFilePath string
+)
 
 // gatedCommands maps a root command name to a component that must be installed
 // for it to be usable. In the 3-repo architecture the agent-driving commands

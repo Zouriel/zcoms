@@ -112,8 +112,8 @@ These run even with an empty allow-list ("secretary-only" mode).
 
 ## WhatsApp triage (optional Baileys sidecar)
 
-Triage and replies can cover **WhatsApp** alongside Telegram, via a small Node
-sidecar in [`whatsapp-bridge/`](../whatsapp-bridge/README.md). It is **off by
+Triage and replies can cover **WhatsApp** alongside Telegram, via an in-process
+WhatsApp client (whatsmeow). It is **off by
 default** — with `whatsapp.enabled:false` (or the block absent) behavior is
 identical to a Telegram-only build.
 
@@ -138,7 +138,7 @@ When enabled and the sidecar is running:
 
 > ⚠️ Baileys is an **unofficial** WhatsApp client and violates WhatsApp's ToS;
 > the paired number carries a ban risk. Prefer a **secondary number** and enable
-> 2FA. See the [sidecar README](../whatsapp-bridge/README.md). `mark_read_on_reply`
+> 2FA. `mark_read_on_reply`
 > defaults **off** for WhatsApp (triage already marks threads read at digest
 > time). Check status with `zc wa status`.
 

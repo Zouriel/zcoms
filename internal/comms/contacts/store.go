@@ -292,7 +292,8 @@ func (s *Store) Create(_ Caller, c client.Contact) (client.Contact, error) {
 	res, err := s.db.Exec(
 		`INSERT INTO contacts(name, phone, email, telegram, whatsapp, instagram, discord, viber, github, note, aliases, created_at, updated_at)
 		 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		c.Name, c.Phone, c.Email, c.Telegram, c.WhatsApp, c.Instagram, c.Discord, c.Viber, c.Github, c.Note, joinAliases(c.Aliases), now(), now())
+		c.Name, c.Phone, c.Email, c.Telegram, c.WhatsApp, c.Instagram, c.Discord, c.Viber, c.Github, c.Note, joinAliases(c.Aliases), now(), now(),
+	)
 	if err != nil {
 		return c, err
 	}
@@ -312,7 +313,8 @@ func (s *Store) Update(_ Caller, c client.Contact) error {
 	res, err := s.db.Exec(
 		`UPDATE contacts SET name=?, phone=?, email=?, telegram=?, whatsapp=?, instagram=?, discord=?, viber=?, github=?, note=?, aliases=?, updated_at=?
 		 WHERE id=?`,
-		c.Name, c.Phone, c.Email, c.Telegram, c.WhatsApp, c.Instagram, c.Discord, c.Viber, c.Github, c.Note, joinAliases(c.Aliases), now(), c.ID)
+		c.Name, c.Phone, c.Email, c.Telegram, c.WhatsApp, c.Instagram, c.Discord, c.Viber, c.Github, c.Note, joinAliases(c.Aliases), now(), c.ID,
+	)
 	if err != nil {
 		return err
 	}

@@ -8,8 +8,10 @@ import (
 	"strings"
 )
 
-var BuildAPIID string
-var BuildAPIHash string
+var (
+	BuildAPIID   string
+	BuildAPIHash string
+)
 
 var ErrMissingCredentials = errors.New("missing TG_API_ID or TG_API_HASH")
 

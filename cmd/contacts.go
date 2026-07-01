@@ -73,9 +73,15 @@ func init() {
 					fmt.Printf("      %-10s %s\n", "aliases:", strings.Join(c.Aliases, ", "))
 				}
 				for _, f := range []struct{ label, val string }{
-					{"phone", c.Phone}, {"email", c.Email}, {"telegram", c.Telegram},
-					{"whatsapp", c.WhatsApp}, {"instagram", c.Instagram},
-					{"discord", c.Discord}, {"viber", c.Viber}, {"github", c.Github}, {"note", c.Note},
+					{"phone", c.Phone},
+					{"email", c.Email},
+					{"telegram", c.Telegram},
+					{"whatsapp", c.WhatsApp},
+					{"instagram", c.Instagram},
+					{"discord", c.Discord},
+					{"viber", c.Viber},
+					{"github", c.Github},
+					{"note", c.Note},
 				} {
 					if f.val != "" {
 						fmt.Printf("      %-10s %s\n", f.label+":", f.val)

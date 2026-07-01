@@ -59,7 +59,8 @@ func FetchChatIdentifiers(tdjson *TDJSON, clientID int32, limit int) ([]int64, e
 		out = append(out, r.ChatIDs...)
 
 		lastID := r.ChatIDs[len(r.ChatIDs)-1]
-		chatJSON, err := SendRequestAndWait(tdjson, clientID,
+		chatJSON, err := SendRequestAndWait(
+			tdjson, clientID,
 			fmt.Sprintf(`{"@type":"getChat","chat_id":%d}`, lastID),
 			"get-chat-order",
 			10*time.Second,

@@ -265,6 +265,7 @@ func ResolveUserIdentifierByUsername(tdjson *TDJSON, clientID int32, username st
 
 	return out.ID, nil
 }
+
 func CreatePrivateChat(tdjson *TDJSON, clientID int32, userID int64) (int64, error) {
 	req := map[string]any{
 		"@type":   "createPrivateChat",
@@ -288,6 +289,7 @@ func CreatePrivateChat(tdjson *TDJSON, clientID int32, userID int64) (int64, err
 
 	return out.ID, nil
 }
+
 func SendTextMessage(tdjson *TDJSON, clientID int32, chatID int64, text string) (int64, error) {
 	formatted := FormatOutgoingText(tdjson, clientID, text)
 	req := map[string]any{

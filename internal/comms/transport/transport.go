@@ -129,10 +129,10 @@ type Actor interface {
 type Inbound struct {
 	From      Address
 	FromSelf  bool
-	Sender    string    // transport-resolved sender handle/name (Telegram @username, WA push name, …)
+	Sender    string // transport-resolved sender handle/name (Telegram @username, WA push name, …)
 	Text      string
-	Kind      string    // content type tag (e.g. tdlib "messageText")
-	Files     []string  // local paths to any downloaded attachments
-	MessageID string    // transport message id
+	Kind      string   // content type tag (e.g. tdlib "messageText")
+	Files     []string // local paths to any downloaded attachments
+	MessageID string   // transport message id
 	At        time.Time
 }

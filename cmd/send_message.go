@@ -119,7 +119,6 @@ func init() {
 
 			time.Sleep(800 * time.Millisecond)
 			return nil
-
 		},
 	}
 

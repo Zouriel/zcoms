@@ -87,6 +87,7 @@ func SubmitAuthenticationPassword(tdjson *TDJSON, clientID int32, password strin
 	_, err = SendRequestAndWait(tdjson, clientID, string(requestBytes), "check-password", 10*time.Second)
 	return err
 }
+
 func LogOutSession(tdjson *TDJSON, clientID int32) error {
 	_, err := SendRequestAndWait(tdjson, clientID, `{"@type":"logOut"}`, "logout", 10*time.Second)
 	return err

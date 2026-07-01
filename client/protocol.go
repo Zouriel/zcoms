@@ -118,8 +118,8 @@ type Event struct {
 	UserID    int64  `json:"user_id"`
 	Sender    string `json:"sender"`
 	Text      string `json:"text"`
-	Kind      string `json:"kind"`             // content type tag, e.g. tdlib "messageText"
-	File      string `json:"file,omitempty"`   // local path if media was downloaded
+	Kind      string `json:"kind"`              // content type tag, e.g. tdlib "messageText"
+	File      string `json:"file,omitempty"`    // local path if media was downloaded
 	MessageID int64  `json:"message_id"`        // Telegram numeric id (0 for non-numeric transports)
 	MsgRef    string `json:"msg_ref,omitempty"` // transport-native message id as a string (WhatsApp, …)
 	Date      int64  `json:"date"`

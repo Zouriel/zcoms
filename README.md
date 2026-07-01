@@ -398,7 +398,7 @@ zc triage twice-daily    # ~08:00 and ~22:00
 zc triage off            # / on
 ```
 
-**WhatsApp (optional, off by default):** an unofficial [Baileys sidecar](whatsapp-bridge/README.md)
+**WhatsApp (optional, off by default):** an unofficial in-process WhatsApp client (whatsmeow)
 lets triage merge unread WhatsApp 1:1s into the **same** digest, and the `interact triage`
 bridge command lets the agent reply to whoever wrote in — on WhatsApp or Telegram. Enable via
 the `whatsapp` block in `agent-settings.json`; check it with `zc wa status`. ⚠️ Baileys

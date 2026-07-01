@@ -77,7 +77,8 @@ func soSearchPaths() []string {
 		if dir == "" {
 			return
 		}
-		paths = append(paths,
+		paths = append(
+			paths,
 			filepath.Join(dir, "libtdjson.so"),
 			filepath.Join(dir, "libtdjson.so.1"),
 		)

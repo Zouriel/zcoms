@@ -18,18 +18,23 @@ type fakeTransport struct {
 	sent   []struct{ to, text string }
 }
 
-func (f *fakeTransport) Name() string                { return f.name }
-func (f *fakeTransport) Caps() transport.Caps        { return f.caps }
+func (f *fakeTransport) Name() string                 { return f.name }
+func (f *fakeTransport) Caps() transport.Caps         { return f.caps }
 func (f *fakeTransport) Status() transport.ConnStatus { return f.status }
 func (f *fakeTransport) Send(to transport.Address, text string) (transport.MsgRef, error) {
 	f.sent = append(f.sent, struct{ to, text string }{to.ID, text})
 	return transport.MsgRef{ID: "1", ChatID: to.ID}, nil
 }
+
 func (f *fakeTransport) SendFile(to transport.Address, path, caption string) (transport.MsgRef, error) {
 	return transport.MsgRef{ChatID: to.ID, Label: path}, nil
 }
-func (f *fakeTransport) Start(ctx context.Context, inbound chan<- transport.Inbound) error { return nil }
-func (f *fakeTransport) Stop() error                                                       { return nil }
+
+func (f *fakeTransport) Start(ctx context.Context, inbound chan<- transport.Inbound) error {
+	return nil
+}
+
+func (f *fakeTransport) Stop() error { return nil }
 
 func newTestDaemon() *daemon {
 	return &daemon{
