@@ -1,0 +1,6 @@
+.PHONY: fmt lint tidy vuln check
+fmt:   ; gofumpt -w . && goimports -w .
+lint:  ; golangci-lint run ./...
+tidy:  ; go mod tidy
+vuln:  ; govulncheck ./...
+check: fmt tidy lint vuln

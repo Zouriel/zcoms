@@ -1,5 +1,6 @@
 version: "2"
 run:
+  go: "1.25.6"
   timeout: 3m
   tests: true
 linters:
