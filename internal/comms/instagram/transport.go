@@ -158,6 +158,15 @@ func (t *Transport) tryRestore(ctx context.Context) bool {
 	return true
 }
 
+// reloadConfig re-reads instagram.json so a login uses the latest credentials.
+func (t *Transport) reloadConfig() {
+	if cfg, err := LoadConfig(t.dir); err == nil {
+		t.mu.Lock()
+		t.cfg = cfg
+		t.mu.Unlock()
+	}
+}
+
 // startLogin runs a fresh username/password login and maps the outcome onto the
 // action_required sub-states the connectors page understands.
 func (t *Transport) startLogin(ctx context.Context) {
@@ -219,6 +228,9 @@ func (t *Transport) Action(name string) error {
 	}
 	switch {
 	case name == "login", name == "reconnect", name == "retry", name == "pair":
+		// Re-read instagram.json so credentials the owner just entered (via the
+		// console) are picked up without a daemon restart.
+		t.reloadConfig()
 		if t.tryRestore(ctx) {
 			return nil
 		}
