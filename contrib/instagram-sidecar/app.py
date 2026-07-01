@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import os
 from typing import Any
+from uuid import uuid4
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -45,8 +46,49 @@ cl = Client()
 cl.delay_range = [1, 3]  # be gentle: randomised pause between requests
 
 # Login continuation state. Instagram's 2FA/challenge is a two-step exchange, so
-# we stash the credentials from /login and finish on /login/verify.
-_pending: dict[str, str] = {}
+# we stash the identifier + credentials from /login and finish on /login/verify.
+_pending: dict[str, Any] = {}
+
+# Instagram's verification_method codes: 1=SMS, 3=authenticator app (TOTP),
+# 6=WhatsApp. We prefer the authenticator when the account has it, because SMS/
+# WhatsApp delivery can silently fail (e.g. a number that no longer receives WA).
+_VMETHOD = {"totp": "3", "sms": "1", "whatsapp": "6"}
+
+
+def _two_factor_methods(info: dict) -> list[str]:
+    methods = []
+    if info.get("totp_two_factor_on"):
+        methods.append("totp")
+    if info.get("sms_two_factor_on"):
+        methods.append("sms")
+    if info.get("whatsapp_two_factor_on"):
+        methods.append("whatsapp")
+    return methods
+
+
+def _submit_two_factor(username: str, code: str, identifier: str, method: str) -> bool:
+    """Submit a 2FA code against the saved 2FA session with an explicit method,
+    instead of re-running the whole login (which re-triggers a WhatsApp/SMS send
+    and can't pick the authenticator)."""
+    data = {
+        "verification_code": code,
+        "phone_id": cl.phone_id,
+        "_csrftoken": cl.token,
+        "two_factor_identifier": identifier,
+        "username": username,
+        "trust_this_device": "1",
+        "guid": cl.uuid,
+        "device_id": cl.android_device_id,
+        "waterfall_id": str(uuid4()),
+        "verification_method": _VMETHOD.get(method, "3"),
+    }
+    logged = cl.private_request("accounts/two_factor_login/", data, login=True)
+    cl.authorization_data = cl.parse_authorization(
+        cl.last_response.headers.get("ig-set-authorization")
+    )
+    if logged:
+        cl.login_flow()
+    return bool(logged)
 
 
 def _logged_in() -> bool:
@@ -64,6 +106,7 @@ class LoginBody(BaseModel):
 
 class VerifyBody(BaseModel):
     code: str
+    method: str | None = None  # "totp" | "sms" | "whatsapp"; default = authenticator
 
 
 class SettingsBody(BaseModel):
@@ -100,8 +143,18 @@ def login(body: LoginBody) -> dict:
         cl.login(body.username, body.password)
         return {"status": "ok"}
     except TwoFactorRequired:
-        _pending.update(username=body.username, password=body.password, kind="2fa")
-        return {"status": "needs_2fa"}
+        info = cl.last_json.get("two_factor_info", {}) or {}
+        methods = _two_factor_methods(info)
+        _pending.update(
+            username=body.username,
+            password=body.password,
+            kind="2fa",
+            identifier=info.get("two_factor_identifier", ""),
+            methods=methods,
+        )
+        # methods tells the caller what's available so it can prompt for the right
+        # one (e.g. "open your authenticator app") instead of waiting on WhatsApp.
+        return {"status": "needs_2fa", "methods": methods}
     except ChallengeRequired:
         _pending.update(username=body.username, password=body.password, kind="challenge")
         return {"status": "needs_challenge"}
@@ -114,14 +167,22 @@ def login_verify(body: VerifyBody) -> dict:
     if not _pending:
         return {"status": "error", "message": "no login in progress"}
     username = _pending.get("username", "")
-    password = _pending.get("password", "")
     kind = _pending.get("kind", "2fa")
+    code = body.code.strip()
     try:
         if kind == "2fa":
-            cl.login(username, password, verification_code=body.code.strip())
+            methods = _pending.get("methods") or []
+            method = (body.method or "").strip().lower()
+            if method not in _VMETHOD:
+                # Default to the authenticator when the account has it, since SMS/
+                # WhatsApp delivery is the part that tends to fail.
+                method = "totp" if "totp" in methods else (methods[0] if methods else "totp")
+            ok = _submit_two_factor(username, code, _pending.get("identifier", ""), method)
+            if not ok:
+                return {"status": "error", "message": "code rejected, try again"}
         else:
             # Challenge: feed the emailed/SMS code back into the resolver.
-            cl.challenge_code = body.code.strip()
+            cl.challenge_code = code
             cl.challenge_resolve(cl.last_json)
         _pending.clear()
         return {"status": "ok"}
