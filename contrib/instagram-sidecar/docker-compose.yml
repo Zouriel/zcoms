@@ -1,0 +1,14 @@
+services:
+  instagram-sidecar:
+    build: .
+    image: zcoms-instagram-sidecar
+    container_name: zcoms-instagram-sidecar
+    restart: unless-stopped
+    # Bind to loopback only — never expose the private-API service to the network.
+    ports:
+      - "127.0.0.1:8099:8099"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8099/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

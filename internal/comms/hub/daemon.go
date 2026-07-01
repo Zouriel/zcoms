@@ -19,6 +19,7 @@ import (
 
 	"github.com/Zouriel/zcoms/client"
 	"github.com/Zouriel/zcoms/internal/comms/contacts"
+	"github.com/Zouriel/zcoms/internal/comms/instagram"
 	"github.com/Zouriel/zcoms/internal/comms/telegram"
 	"github.com/Zouriel/zcoms/internal/comms/transport"
 	"github.com/Zouriel/zcoms/internal/comms/whatsapp"
@@ -86,8 +87,11 @@ func RunDaemon(tdjson *telegram.TDJSON, clientID int32, store *contacts.Store) e
 	// action_required/needs_qr and surfaces the QR on the connectors page.
 	if dir, err := client.DefaultAppDir(); err == nil {
 		d.registry["whatsapp"] = whatsapp.New(filepath.Join(dir, "whatsmeow.db"))
+		// Instagram (Python sidecar over HTTP). Inert until instagram.json is
+		// seeded; then it restores/logs in and polls DMs on an interval.
+		d.registry["instagram"] = instagram.New(dir)
 	} else {
-		d.logf("whatsapp transport disabled: %v", err)
+		d.logf("whatsapp/instagram transports disabled: %v", err)
 	}
 
 	if err := d.serveIPC(); err != nil {
