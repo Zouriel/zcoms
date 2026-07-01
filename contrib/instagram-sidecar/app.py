@@ -30,7 +30,8 @@ import os
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from instagrapi import Client
 from instagrapi.exceptions import (
@@ -41,6 +42,25 @@ from instagrapi.exceptions import (
 )
 
 app = FastAPI(title="zcoms-instagram-sidecar")
+
+
+# Map instagrapi failures onto HTTP status codes the Go client can act on, instead
+# of a blanket 500:
+#   401 — the session lapsed (re-login needed)
+#   429 — Instagram is rate-limiting / soft-blocking (its 467), so the caller
+#         should back off rather than hammer
+#   502 — any other upstream client error
+@app.exception_handler(LoginRequired)
+def _login_required_handler(request: Request, exc: LoginRequired) -> JSONResponse:
+    return JSONResponse(status_code=401, content={"detail": str(exc)})
+
+
+@app.exception_handler(ClientError)
+def _client_error_handler(request: Request, exc: ClientError) -> JSONResponse:
+    msg = str(exc)
+    low = msg.lower()
+    rate_limited = "467" in msg or "429" in msg or "few minutes" in low or "rate" in low
+    return JSONResponse(status_code=429 if rate_limited else 502, content={"detail": msg})
 
 cl = Client()
 cl.delay_range = [1, 3]  # be gentle: randomised pause between requests

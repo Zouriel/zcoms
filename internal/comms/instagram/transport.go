@@ -268,39 +268,66 @@ func (t *Transport) actionError() error {
 	return nil
 }
 
+type pollResult int
+
+const (
+	pollOK          pollResult = iota
+	pollRateLimited            // Instagram 467/429 soft-block: back off hard
+	pollTransient              // other error: back off mildly
+)
+
 // pollLoop ticks the receive poll until ctx is cancelled. It only polls while
 // connected; when the session drops it surfaces session_expired so the console
-// prompts a re-login.
+// prompts a re-login. On rate-limit/error it backs off exponentially (up to
+// maxPollBackoff) so a 467 soft-block from Instagram is never hammered every
+// interval — a successful poll resets it to the base cadence.
 func (t *Transport) pollLoop(ctx context.Context, every time.Duration) {
 	if every <= 0 {
 		every = 45 * time.Second
 	}
-	ticker := time.NewTicker(every)
-	defer ticker.Stop()
+	const maxPollBackoff = 15 * time.Minute
+	delay := every
 	for {
+		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
-		case <-ticker.C:
-			if !t.isConnected() {
-				continue
+		case <-timer.C:
+		}
+		if !t.isConnected() {
+			delay = every
+			continue
+		}
+		switch t.pollOnce(ctx) {
+		case pollOK:
+			delay = every
+		case pollRateLimited, pollTransient:
+			delay *= 2
+			if delay > maxPollBackoff {
+				delay = maxPollBackoff
 			}
-			t.pollOnce(ctx)
 		}
 	}
 }
 
 // pollOnce fetches recent threads and emits an Inbound for every message it has
-// not seen before (deduped by the store's UNIQUE(thread, msg_id) index).
-func (t *Transport) pollOnce(ctx context.Context) {
+// not seen before (deduped by the store's UNIQUE(thread, msg_id) index). It
+// returns a pollResult so the loop can pace itself.
+func (t *Transport) pollOnce(ctx context.Context) pollResult {
 	threads, err := t.sc.Threads(ctx, 20)
 	if err != nil {
-		// An auth failure means the session lapsed; anything else is transient.
-		if strings.Contains(strings.ToLower(err.Error()), "login") ||
-			strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "403") {
+		e := err.Error()
+		switch {
+		case strings.Contains(e, "(401)"):
+			// The session lapsed; stop polling until the owner re-logs in.
 			t.setStatus(transport.StateSessionExpired, "session expired — log in again")
+			return pollTransient
+		case strings.Contains(e, "(429)") || strings.Contains(e, "467"):
+			return pollRateLimited
+		default:
+			return pollTransient
 		}
-		return
 	}
 	for _, th := range threads {
 		if th.IsGroup {
@@ -327,6 +354,7 @@ func (t *Transport) pollOnce(ctx context.Context) {
 			})
 		}
 	}
+	return pollOK
 }
 
 // emit pushes an inbound onto the shared channel without blocking the poll loop
