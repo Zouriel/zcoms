@@ -1,6 +1,6 @@
 module github.com/Zouriel/zcoms
 
-go 1.25.10
+go 1.25.11
 
 require (
 	github.com/joho/godotenv v1.5.1
