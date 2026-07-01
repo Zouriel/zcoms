@@ -87,7 +87,15 @@ def _submit_two_factor(username: str, code: str, identifier: str, method: str) -
         cl.last_response.headers.get("ig-set-authorization")
     )
     if logged:
-        cl.login_flow()
+        # login_flow() replays the app's post-login feed reads (reels_tray,
+        # timeline, …). Instagram often rate-limits those with a 467, especially
+        # from a datacenter IP with no proxy. The 2FA auth already succeeded and
+        # the session token is captured above, so a warmup failure must not throw
+        # the whole login away — swallow it and rely on the token.
+        try:
+            cl.login_flow()
+        except Exception:
+            pass
     return bool(logged)
 
 
@@ -202,11 +210,21 @@ def get_settings() -> dict:
 def set_settings(body: SettingsBody) -> dict:
     try:
         cl.set_settings(body.settings)
+    except Exception as e:  # noqa: BLE001
+        return {"status": "error", "message": str(e)}
+    try:
         # A cheap authenticated call proves the restored session is still valid.
         cl.get_timeline_feed()
         return {"status": "ok"}
-    except (LoginRequired, ClientError) as e:
+    except LoginRequired as e:
         return {"status": "error", "message": str(e)}
+    except Exception:  # noqa: BLE001
+        # The session loaded but the validation call was rate-limited (467) rather
+        # than rejected. If we still have a user id the token is good; accept it
+        # and let real calls retry, instead of forcing a fresh login.
+        if _logged_in():
+            return {"status": "ok"}
+        return {"status": "error", "message": "session validation failed"}
 
 
 @app.post("/logout")
