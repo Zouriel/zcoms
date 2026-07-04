@@ -46,8 +46,8 @@ func init() {
 			if deliver {
 				cmdline += "deliver "
 			}
-			if !plan {
-				cmdline += "go "
+			if plan {
+				cmdline += "plan "
 			}
 			cmdline += target + " | " + brief
 			handled, reply, err := errandsCommand(cmdline)
@@ -85,8 +85,8 @@ func init() {
 			if schedDeliver {
 				cmdline += "deliver "
 			}
-			if !schedPlan {
-				cmdline += "go "
+			if schedPlan {
+				cmdline += "plan "
 			}
 			cmdline += target + " at " + when + " | " + brief
 			handled, reply, err := errandsCommand(cmdline)
