@@ -29,15 +29,15 @@ func init() {
 			"summary and pings you when done. Errands run in the agent (`zc install agent`).",
 	}
 
-	var deliver, start bool
+	var deliver, plan, goDeprecated bool
 	startCommand := &cobra.Command{
 		Use:   "start <@user|wa:NUMBER|#index> <brief...>",
 		Short: "Start an errand at a contact",
 		Long: "Dispatch an errand. The target is a Telegram @username/chat id, a WhatsApp\n" +
-			"contact as wa:<number>, or #<index> from the last triage batch. By default the\n" +
-			"agent drafts a plan and waits for your approval before messaging anyone; pass\n" +
-			"--go to start immediately, and --deliver to also send the finished file to the\n" +
-			"contact.",
+			"contact as wa:<number>, or #<index> from the last triage batch. The agent\n" +
+			"starts messaging immediately by default; pass --plan to have it draft a plan\n" +
+			"and wait for your approval first, and --deliver to also send the finished file\n" +
+			"to the contact.",
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := args[0]
@@ -46,7 +46,7 @@ func init() {
 			if deliver {
 				cmdline += "deliver "
 			}
-			if start {
+			if !plan {
 				cmdline += "go "
 			}
 			cmdline += target + " | " + brief
@@ -62,17 +62,20 @@ func init() {
 		},
 	}
 	startCommand.Flags().BoolVar(&deliver, "deliver", false, "Also send the finished deliverable to the contact")
-	startCommand.Flags().BoolVar(&start, "go", false, "Skip the approval step and start messaging immediately")
+	startCommand.Flags().BoolVar(&plan, "plan", false, "Draft a plan and wait for your approval before messaging anyone")
+	// --go is now the default; keep it as a hidden no-op so existing usage/scripts don't break.
+	startCommand.Flags().BoolVar(&goDeprecated, "go", false, "Deprecated: errands start immediately by default")
+	_ = startCommand.Flags().MarkHidden("go")
 
-	var schedDeliver, schedGo bool
+	var schedDeliver, schedPlan, schedGoDeprecated bool
 	scheduleCommand := &cobra.Command{
 		Use:   "schedule <@user|wa:NUMBER|#index> <when> <brief...>",
 		Short: "Schedule an errand to start at a future time",
 		Long: "Queue an errand to be dispatched automatically at a specific time. <when> is\n" +
 			"a relative duration (+30m, +2h, 1h30m), a wall-clock time today/tomorrow\n" +
 			"(15:30), or a full local timestamp (2026-06-18T15:30). When it fires it behaves\n" +
-			"exactly like `errand start`: it drafts a plan for your approval by default, or\n" +
-			"starts messaging immediately with --go. The target is resolved at fire time.",
+			"exactly like `errand start`: it starts messaging immediately, or drafts a plan\n" +
+			"for your approval first with --plan. The target is resolved at fire time.",
 		Args: cobra.MinimumNArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := args[0]
@@ -82,7 +85,7 @@ func init() {
 			if schedDeliver {
 				cmdline += "deliver "
 			}
-			if schedGo {
+			if !schedPlan {
 				cmdline += "go "
 			}
 			cmdline += target + " at " + when + " | " + brief
@@ -98,7 +101,10 @@ func init() {
 		},
 	}
 	scheduleCommand.Flags().BoolVar(&schedDeliver, "deliver", false, "Also send the finished deliverable to the contact")
-	scheduleCommand.Flags().BoolVar(&schedGo, "go", false, "Skip the approval step and start messaging immediately when it fires")
+	scheduleCommand.Flags().BoolVar(&schedPlan, "plan", false, "Draft a plan and wait for your approval when it fires, before messaging anyone")
+	// --go is now the default; keep it hidden so existing usage/scripts don't break.
+	scheduleCommand.Flags().BoolVar(&schedGoDeprecated, "go", false, "Deprecated: errands start immediately by default")
+	_ = scheduleCommand.Flags().MarkHidden("go")
 
 	scheduledCommand := &cobra.Command{
 		Use:   "scheduled",

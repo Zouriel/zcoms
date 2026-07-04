@@ -17,6 +17,10 @@ tg-uploads/
 # Air hot-reload temp dir
 tmp/
 
+# Python sidecar bytecode
+__pycache__/
+*.pyc
+
 # OS
 .DS_Store
 Thumbs.db
