@@ -35,7 +35,9 @@ func NewHarness(name string) (*Harness, error) {
 // every push-driven component (bridge, errands) used to copy by hand.
 func (h *Harness) Run(ctx context.Context, role string, handler func(Event)) {
 	for ctx.Err() == nil {
-		err := h.Client.Subscribe(role, handler)
+		// Context-aware: cancelling ctx unblocks the read immediately, so a module
+		// shutting down exits on SIGTERM instead of waiting out its stop timeout.
+		err := h.Client.SubscribeContext(ctx, role, handler)
 		if ctx.Err() != nil {
 			return
 		}
