@@ -203,3 +203,33 @@ func TestOnlyWhatsAppIsRewrittenBeforeTheTransport(t *testing.T) {
 		t.Errorf("telegram recipient became (%q, %v), want it passed through untouched", got, err)
 	}
 }
+
+// Instagram is addressed by thread id or handle. A name is neither, but unlike
+// WhatsApp a bare word may be a real public handle, so an unknown one is passed
+// through rather than refused.
+func TestResolvesAContactNameToAnInstagramHandle(t *testing.T) {
+	d := newDirectory(t, client.Contact{Name: "Raani", Instagram: "@reiniellle", Phone: "+9609752353"})
+
+	got, err := d.resolveInstagram("Raani")
+	if err != nil || got != "@reiniellle" {
+		t.Errorf("resolved to (%q, %v), want @reiniellle", got, err)
+	}
+
+	for _, passthrough := range []string{"@someone_else", "17845678901234567", "unknownperson"} {
+		got, err := d.resolveInstagram(passthrough)
+		if err != nil || got != passthrough {
+			t.Errorf("%q became (%q, %v), want it passed through", passthrough, got, err)
+		}
+	}
+}
+
+// Instagram has no phone fallback, so a contact with only a number cannot be
+// reached there, and the reply should name them rather than fail on a lookup.
+func TestAContactWithNoInstagramSaysSo(t *testing.T) {
+	d := newDirectory(t, client.Contact{Name: "Yaseen", Phone: "+9609354500"})
+
+	_, err := d.resolveInstagram("Yaseen")
+	if err == nil || !strings.Contains(err.Error(), "Yaseen") {
+		t.Errorf("got %v, want an error naming the contact", err)
+	}
+}

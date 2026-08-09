@@ -308,11 +308,16 @@ func writeIPC(conn net.Conn, resp client.Response) {
 // recipient turns whatever a caller addressed into what the transport expects.
 //
 // Telegram resolves inside its own transport, because it needs the TDLib session
-// to turn a handle into a chat. WhatsApp takes a JID and has no directory of its
-// own, so a contact's name has to become an address before it gets there.
+// to turn a handle into a chat. The others take a native address and have no
+// directory of their own, so a contact's name has to become one before it gets
+// there.
 func (d *daemon) recipient(transportName, to string) (string, error) {
-	if transportName != "whatsapp" {
+	switch transportName {
+	case "whatsapp":
+		return d.resolveWhatsApp(to)
+	case "instagram":
+		return d.resolveInstagram(to)
+	default:
 		return to, nil
 	}
-	return d.resolveWhatsApp(to)
 }
