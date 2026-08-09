@@ -93,7 +93,12 @@ func (d *daemon) handleIPC(conn net.Conn) {
 			writeIPC(conn, client.Response{Error: "unknown transport: " + transportName(req)})
 			return
 		}
-		ref, err := t.Send(transport.Address{Transport: transportName(req), ID: req.To}, req.Text)
+		to, err := d.recipient(transportName(req), req.To)
+		if err != nil {
+			writeIPC(conn, client.Response{Error: err.Error()})
+			return
+		}
+		ref, err := t.Send(transport.Address{Transport: transportName(req), ID: to}, req.Text)
 		if err != nil {
 			writeIPC(conn, client.Response{Error: err.Error()})
 			return
@@ -114,7 +119,12 @@ func (d *daemon) handleIPC(conn net.Conn) {
 		// Fire-and-forget for push transports: the completion arrives as an
 		// unsolicited update the receive loop consumes, so waiting here would
 		// race. The daemon stays alive, so the upload finishes regardless.
-		ref, err := t.SendFile(transport.Address{Transport: transportName(req), ID: req.To}, req.Path, req.Text)
+		to, err := d.recipient(transportName(req), req.To)
+		if err != nil {
+			writeIPC(conn, client.Response{Error: err.Error()})
+			return
+		}
+		ref, err := t.SendFile(transport.Address{Transport: transportName(req), ID: to}, req.Path, req.Text)
 		if err != nil {
 			writeIPC(conn, client.Response{Error: err.Error()})
 			return
@@ -130,7 +140,12 @@ func (d *daemon) handleIPC(conn net.Conn) {
 				writeIPC(conn, client.Response{Error: transportName(req) + " has no readable history"})
 				return
 			}
-			hist, err := rdr.History(req.To, req.Count)
+			to, err := d.recipient(transportName(req), req.To)
+			if err != nil {
+				writeIPC(conn, client.Response{Error: err.Error()})
+				return
+			}
+			hist, err := rdr.History(to, req.Count)
 			if err != nil {
 				writeIPC(conn, client.Response{Error: err.Error()})
 				return
@@ -142,7 +157,7 @@ func (d *daemon) handleIPC(conn net.Conn) {
 					Kind: h.Kind, File: h.File, Date: h.At.Unix(),
 				})
 			}
-			writeIPC(conn, client.Response{OK: true, Address: req.To, Messages: msgs})
+			writeIPC(conn, client.Response{OK: true, Address: to, Messages: msgs})
 			return
 		}
 		chatID, _, err := d.resolveChat(req.To)
@@ -249,11 +264,16 @@ func (d *daemon) handleIPC(conn net.Conn) {
 				writeIPC(conn, client.Response{Error: transportName(req) + " has no readable history"})
 				return
 			}
-			if err := rdr.MarkRead(req.To, req.MsgRefs); err != nil {
+			to, err := d.recipient(transportName(req), req.To)
+			if err != nil {
 				writeIPC(conn, client.Response{Error: err.Error()})
 				return
 			}
-			writeIPC(conn, client.Response{OK: true, Address: req.To})
+			if err := rdr.MarkRead(to, req.MsgRefs); err != nil {
+				writeIPC(conn, client.Response{Error: err.Error()})
+				return
+			}
+			writeIPC(conn, client.Response{OK: true, Address: to})
 			return
 		}
 		if req.ChatID == 0 || len(req.MessageIDs) == 0 {
@@ -283,4 +303,16 @@ func (d *daemon) handleIPC(conn net.Conn) {
 func writeIPC(conn net.Conn, resp client.Response) {
 	b, _ := json.Marshal(resp)
 	_, _ = conn.Write(append(b, '\n'))
+}
+
+// recipient turns whatever a caller addressed into what the transport expects.
+//
+// Telegram resolves inside its own transport, because it needs the TDLib session
+// to turn a handle into a chat. WhatsApp takes a JID and has no directory of its
+// own, so a contact's name has to become an address before it gets there.
+func (d *daemon) recipient(transportName, to string) (string, error) {
+	if transportName != "whatsapp" {
+		return to, nil
+	}
+	return d.resolveWhatsApp(to)
 }

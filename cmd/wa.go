@@ -7,44 +7,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Zouriel/zcoms/internal/comms/whatsapp"
 	"github.com/spf13/cobra"
 )
 
-// waJID normalizes a phone number or JID into a WhatsApp JID. A value that
-// already contains "@" is used as-is (a full @s.whatsapp.net or @lid jid);
-// otherwise the digits are kept and "@s.whatsapp.net" appended, so a plain phone
-// number like "+960 798-8692" becomes "9607988692@s.whatsapp.net".
-func waJID(to string) string {
-	to = strings.TrimSpace(to)
-	if strings.Contains(to, "@") {
-		return to
-	}
-	var b strings.Builder
-	for _, r := range to {
-		if r >= '0' && r <= '9' {
-			b.WriteRune(r)
-		}
-	}
-	return b.String() + "@s.whatsapp.net"
-}
-
-// looksLikeWANumber reports whether s is a bare phone number / jid (digits, +,
-// spaces, dashes, or an @) rather than a contact name to resolve.
-func looksLikeWANumber(s string) bool {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return false
-	}
-	if strings.Contains(s, "@") {
-		return true
-	}
-	for _, r := range s {
-		if (r < '0' || r > '9') && r != '+' && r != ' ' && r != '-' && r != '(' && r != ')' {
-			return false
-		}
-	}
-	return true
-}
+// waJID and looksLikeWANumber live in the whatsapp package, so the daemon and
+// this command agree on what an address is rather than each keeping a copy.
+var (
+	waJID             = whatsapp.JID
+	looksLikeWANumber = whatsapp.LooksLikeNumber
+)
 
 // resolveWA turns a recipient (phone number, JID, or a contact name) into a
 // WhatsApp JID. Names are looked up in the contacts directory and resolved to

@@ -121,3 +121,85 @@ func TestAPhoneNumberIsNotMistakenForAChatId(t *testing.T) {
 		t.Error("a plain chat id must stay valid")
 	}
 }
+
+// WhatsApp addressing is a JID. A contact's name is not one, and handing it
+// straight to the transport either fails to parse or builds a JID with no user
+// in it. The CLI already resolved names; anything arriving over IPC did not.
+func TestResolvesAContactNameToAWhatsAppJid(t *testing.T) {
+	d := newDirectory(t, client.Contact{Name: "Shanna ❤️", Telegram: "@Zoella99", Phone: "+9607988692"})
+
+	got, err := d.resolveWhatsApp("Shanna")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "9607988692@s.whatsapp.net" {
+		t.Errorf("resolved to %q, want the contact's number as a jid", got)
+	}
+}
+
+// A number or a jid is already an address and must not be looked up.
+func TestAWhatsAppNumberIsUsedAsGiven(t *testing.T) {
+	d := newDirectory(t)
+
+	for input, want := range map[string]string{
+		"+960 798-8692":             "9607988692@s.whatsapp.net",
+		"9607988692":                "9607988692@s.whatsapp.net",
+		"9607988692@s.whatsapp.net": "9607988692@s.whatsapp.net",
+		"123456@lid":                "123456@lid",
+	} {
+		got, err := d.resolveWhatsApp(input)
+		if err != nil {
+			t.Fatalf("%q: %v", input, err)
+		}
+		if got != want {
+			t.Errorf("%q resolved to %q, want %q", input, got, want)
+		}
+	}
+}
+
+// An unknown name has nowhere else to go on WhatsApp: there is no public
+// directory to fall back to, so say so rather than build a nonsense jid.
+func TestAnUnknownWhatsAppNameIsRefused(t *testing.T) {
+	d := newDirectory(t, client.Contact{Name: "Shanna", Phone: "+9607988692"})
+
+	if _, err := d.resolveWhatsApp("nobody"); err == nil {
+		t.Fatal("expected a refusal, got a jid")
+	}
+}
+
+// A contact with no number at all cannot be reached on WhatsApp, and the reply
+// should say which contact and why.
+func TestAContactWithNoNumberSaysSoForWhatsApp(t *testing.T) {
+	d := newDirectory(t, client.Contact{Name: "Ishaan", Telegram: "@icernn03"})
+
+	_, err := d.resolveWhatsApp("Ishaan")
+	if err == nil {
+		t.Fatal("expected an explanation, got a jid")
+	}
+	if !strings.Contains(err.Error(), "Ishaan") {
+		t.Errorf("error %q does not name the contact", err)
+	}
+}
+
+// Ambiguity is refused on WhatsApp for the same reason as Telegram.
+func TestAnAmbiguousWhatsAppNameIsRefused(t *testing.T) {
+	d := newDirectory(t,
+		client.Contact{Name: "Sam Ali", Phone: "+9601111111"},
+		client.Contact{Name: "Sam Idris", Phone: "+9602222222"},
+	)
+
+	if _, err := d.resolveWhatsApp("Sam"); err == nil {
+		t.Fatal("expected a refusal, got a silent pick")
+	}
+}
+
+// Telegram must keep its own path: it resolves inside its transport, where the
+// TDLib session is, so the recipient hook has to leave it alone.
+func TestOnlyWhatsAppIsRewrittenBeforeTheTransport(t *testing.T) {
+	d := newDirectory(t, client.Contact{Name: "Shanna", Phone: "+9607988692"})
+
+	got, err := d.recipient("telegram", "Shanna")
+	if err != nil || got != "Shanna" {
+		t.Errorf("telegram recipient became (%q, %v), want it passed through untouched", got, err)
+	}
+}

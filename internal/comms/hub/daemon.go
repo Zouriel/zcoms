@@ -312,27 +312,11 @@ func (d *daemon) resolveChat(to string) (chatID, userID int64, err error) {
 // Telegram address to use. An empty handle with no error means "not a contact",
 // so the caller falls back to treating the name as a username.
 func (d *daemon) telegramHandleFor(name string) (handle, contact string, err error) {
-	if d.contacts == nil {
-		return "", "", nil
+	c, ok, err := d.contactFor(name)
+	if err != nil || !ok {
+		return "", "", err
 	}
 
-	matches, e := d.contacts.Resolve(name)
-	if e != nil || len(matches) == 0 {
-		return "", "", nil // a lookup failure is not a reason to refuse; try it as a username
-	}
-
-	// Ambiguity is the caller's to settle. Picking one silently sends a private
-	// message to the wrong person, which is not a mistake a retry can undo.
-	if len(matches) > 1 {
-		names := make([]string, 0, len(matches))
-		for _, m := range matches {
-			names = append(names, m.Name)
-		}
-		return "", "", fmt.Errorf("%q matches several contacts (%s): say which one",
-			name, strings.Join(names, ", "))
-	}
-
-	c := matches[0]
 	addr := strings.TrimSpace(c.Address("telegram"))
 	if addr == "" {
 		return "", "", fmt.Errorf("%s has no Telegram address in your contacts", c.Name)
@@ -347,6 +331,67 @@ func (d *daemon) telegramHandleFor(name string) (handle, contact string, err err
 	}
 
 	return addr, c.Name, nil
+}
+
+// resolveWhatsApp turns a phone number, a JID, or a contact's name into a JID.
+//
+// WhatsApp addressing is a JID, and a name is not one: handed "Shanna" straight
+// through, the parse fails or produces a JID with no user in it. The CLI already
+// resolved names, but that lived in the command layer, so anything reaching the
+// daemon over IPC (an assistant, most of all) never got it.
+func (d *daemon) resolveWhatsApp(to string) (string, error) {
+	to = strings.TrimSpace(to)
+	if to == "" {
+		return "", fmt.Errorf("a recipient (number, jid, or contact name) is required")
+	}
+
+	// A number or a JID is already an address; only a name needs looking up.
+	if whatsapp.LooksLikeNumber(to) {
+		return whatsapp.JID(to), nil
+	}
+
+	c, ok, err := d.contactFor(to)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("no contact matching %q: give a number, or add them to your contacts", to)
+	}
+
+	addr := strings.TrimSpace(c.Address("whatsapp"))
+	if addr == "" {
+		return "", fmt.Errorf("%s has no WhatsApp number in your contacts", c.Name)
+	}
+
+	return whatsapp.JID(addr), nil
+}
+
+// contactFor resolves a name against the contacts directory.
+//
+// Not found is reported as ok=false rather than an error, because for Telegram a
+// name may still be a public username worth trying. Ambiguity is an error: the
+// caller settles it, since picking one silently sends a private message to the
+// wrong person, and no retry takes that back.
+func (d *daemon) contactFor(name string) (contact client.Contact, ok bool, err error) {
+	if d.contacts == nil {
+		return client.Contact{}, false, nil
+	}
+
+	matches, e := d.contacts.Resolve(name)
+	if e != nil || len(matches) == 0 {
+		return client.Contact{}, false, nil
+	}
+
+	if len(matches) > 1 {
+		names := make([]string, 0, len(matches))
+		for _, m := range matches {
+			names = append(names, m.Name)
+		}
+		return client.Contact{}, false, fmt.Errorf("%q matches several contacts (%s): say which one",
+			name, strings.Join(names, ", "))
+	}
+
+	return matches[0], true, nil
 }
 
 // chatIDOf reports whether s is a Telegram chat id.
