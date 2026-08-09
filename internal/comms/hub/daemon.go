@@ -265,13 +265,39 @@ func (d *daemon) senderName(userID int64) string {
 	return name
 }
 
-// resolveChat turns "@username" or a numeric id into a chat id (and user id).
+// resolveChat turns a numeric id, an "@username", or a contact's name into a
+// chat id (and user id).
+//
+// The contacts directory is consulted for a bare name because that is the
+// spelling callers naturally have: the directory is what list_contacts hands an
+// AI, and "Shanna" is not a Telegram username, so passing it straight through
+// asks Telegram to look up a public account and comes back USERNAME_INVALID.
+// The round trip has to close at the layer that owns the directory, or every
+// caller re-implements it and only some get it right.
 func (d *daemon) resolveChat(to string) (chatID, userID int64, err error) {
 	to = strings.TrimSpace(to)
-	if id, e := strconv.ParseInt(to, 10, 64); e == nil {
+	if id, ok := chatIDOf(to); ok {
 		return id, id, nil // private chat id == user id in TDLib
 	}
-	uid, e := telegram.ResolveUserIdentifierByUsername(d.tdjson, d.clientID, to)
+
+	// An explicit "@handle" means Telegram, so it skips the directory. A bare
+	// word is looked up as a contact first: the owner's own directory outranks
+	// whoever happens to hold that public username.
+	handle := to
+	if !strings.HasPrefix(to, "@") {
+		if resolved, name, e := d.telegramHandleFor(to); e != nil {
+			return 0, 0, e
+		} else if resolved != "" {
+			handle = resolved
+			defer func() {
+				if err != nil {
+					err = fmt.Errorf("couldn't reach %s on Telegram (%s): %w", name, resolved, err)
+				}
+			}()
+		}
+	}
+
+	uid, e := telegram.ResolveUserIdentifierByUsername(d.tdjson, d.clientID, handle)
 	if e != nil {
 		return 0, 0, e
 	}
@@ -280,6 +306,60 @@ func (d *daemon) resolveChat(to string) (chatID, userID int64, err error) {
 		cid = uid
 	}
 	return cid, uid, nil
+}
+
+// telegramHandleFor looks a name up in the contacts directory and returns the
+// Telegram address to use. An empty handle with no error means "not a contact",
+// so the caller falls back to treating the name as a username.
+func (d *daemon) telegramHandleFor(name string) (handle, contact string, err error) {
+	if d.contacts == nil {
+		return "", "", nil
+	}
+
+	matches, e := d.contacts.Resolve(name)
+	if e != nil || len(matches) == 0 {
+		return "", "", nil // a lookup failure is not a reason to refuse; try it as a username
+	}
+
+	// Ambiguity is the caller's to settle. Picking one silently sends a private
+	// message to the wrong person, which is not a mistake a retry can undo.
+	if len(matches) > 1 {
+		names := make([]string, 0, len(matches))
+		for _, m := range matches {
+			names = append(names, m.Name)
+		}
+		return "", "", fmt.Errorf("%q matches several contacts (%s): say which one",
+			name, strings.Join(names, ", "))
+	}
+
+	c := matches[0]
+	addr := strings.TrimSpace(c.Address("telegram"))
+	if addr == "" {
+		return "", "", fmt.Errorf("%s has no Telegram address in your contacts", c.Name)
+	}
+
+	// Address falls back to the phone number, which Telegram cannot look up the
+	// way a username can. Saying so beats handing back a Telegram error code.
+	if _, ok := chatIDOf(addr); !ok && !strings.HasPrefix(addr, "@") {
+		return "", "", fmt.Errorf(
+			"%s is saved with a phone number (%s) and no Telegram handle, which I cannot look up: add their @username",
+			c.Name, addr)
+	}
+
+	return addr, c.Name, nil
+}
+
+// chatIDOf reports whether s is a Telegram chat id.
+//
+// It is stricter than ParseInt, which accepts a leading sign: "+9607988692" is
+// a phone number, and reading it as a chat id would address a chat nobody meant.
+// A leading "-" stays valid, because supergroup ids are negative.
+func chatIDOf(s string) (int64, bool) {
+	if strings.HasPrefix(s, "+") {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(s, 10, 64)
+	return id, err == nil
 }
 
 // resolvePendingAsk delivers text to the oldest outstanding `zc tg ask` for
