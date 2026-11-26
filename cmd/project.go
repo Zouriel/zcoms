@@ -33,7 +33,7 @@ type projectInitOpts struct {
 // parseProjectInitFlags reads the optional flags of `project init`, which runs
 // with flag parsing off so every other subcommand passes through untouched.
 func parseProjectInitFlags(args []string) (projectInitOpts, error) {
-	o := projectInitOpts{transport: "telegram"}
+	var o projectInitOpts
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		next := func() (string, error) {
@@ -60,10 +60,22 @@ func parseProjectInitFlags(args []string) (projectInitOpts, error) {
 			return o, err
 		}
 	}
-	if o.transport != "telegram" && o.transport != "whatsapp" {
+	if o.transport != "" && o.transport != "telegram" && o.transport != "whatsapp" {
 		return o, fmt.Errorf("transport must be telegram or whatsapp")
 	}
 	return o, nil
+}
+
+// parsePlatform maps an answer to the platform prompt to a transport name,
+// or "" when it is not one.
+func parsePlatform(ans string) string {
+	switch strings.ToLower(strings.TrimSpace(ans)) {
+	case "t", "tg", "tele", "telegram":
+		return "telegram"
+	case "w", "wa", "whatsapp":
+		return "whatsapp"
+	}
+	return ""
 }
 
 func askYesNo(r *bufio.Reader, prompt string, def bool) (bool, error) {
@@ -97,6 +109,18 @@ func runProjectInit(args []string) error {
 		return err
 	}
 	in := bufio.NewReader(os.Stdin)
+
+	// The platform comes first: the group name is resolved on it.
+	for o.transport == "" {
+		ans, err := promptLine(in, "Platform, Telegram or WhatsApp? [t/w] ")
+		if err != nil {
+			return err
+		}
+		o.transport = parsePlatform(ans)
+		if o.transport == "" {
+			fmt.Println("answer t (Telegram) or w (WhatsApp)")
+		}
+	}
 
 	// The group name: checked against the daemon so a typo or an ambiguous name
 	// is caught here, where the owner can answer again.

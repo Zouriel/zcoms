@@ -29,3 +29,11 @@ func TestParseProjectInitFlags(t *testing.T) {
 		t.Fatal("an unknown flag must fail")
 	}
 }
+
+func TestParsePlatform(t *testing.T) {
+	for in, want := range map[string]string{"t": "telegram", " Tele ": "telegram", "w": "whatsapp", "WhatsApp": "whatsapp", "x": "", "": ""} {
+		if got := parsePlatform(in); got != want {
+			t.Errorf("parsePlatform(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
