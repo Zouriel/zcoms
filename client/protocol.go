@@ -68,6 +68,60 @@ type Request struct {
 	Deliver   bool   `json:"deliver,omitempty"`
 	AutoStart bool   `json:"auto_start,omitempty"`
 	ID        string `json:"id,omitempty"`
+
+	// Group ops and group-aware sends. ReplyTo is the message id to quote
+	// (Telegram numeric id as a string, WhatsApp stanza id). Mentions are
+	// member platform ids to tag (Telegram user id, WhatsApp JID).
+	ReplyTo  string   `json:"reply_to,omitempty"`
+	Mentions []string `json:"mentions,omitempty"`
+	Name     string   `json:"name,omitempty"`    // group name (group_create)
+	Members  []string `json:"members,omitempty"` // member names/addresses (group_create, group_add)
+
+	// group_read window: Limit messages, latest by default, or Around/Before a
+	// message id, or Since a unix time (seconds).
+	Limit  int    `json:"limit,omitempty"`
+	Around string `json:"around,omitempty"`
+	Before string `json:"before,omitempty"`
+	Since  int64  `json:"since,omitempty"`
+
+	// group_set flags; nil leaves the flag unchanged.
+	Listen *bool `json:"listen,omitempty"`
+	Follow *bool `json:"follow,omitempty"`
+}
+
+// Group is one row of the comms.db group registry. NativeID is the Telegram
+// chat id (as a string) or the WhatsApp @g.us JID. Listen means calls are
+// forwarded to the agent; Follow means every message is stored and readable by
+// date.
+type Group struct {
+	ID        int64    `json:"id"`
+	Name      string   `json:"name"`
+	Transport string   `json:"transport"`
+	NativeID  string   `json:"native_id"`
+	Aliases   []string `json:"aliases,omitempty"`
+	Listen    bool     `json:"listen"`
+	Follow    bool     `json:"follow"`
+}
+
+// GroupMember is one member of a group. ID is the Telegram user id (as a
+// string) or the WhatsApp JID.
+type GroupMember struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Username string `json:"username,omitempty"`
+	IsSelf   bool   `json:"is_self,omitempty"`
+}
+
+// GroupMessage is one message returned by group_read, in time order.
+type GroupMessage struct {
+	ID         string `json:"id"`
+	SenderID   string `json:"sender_id"`
+	SenderName string `json:"sender_name"`
+	Text       string `json:"text"`
+	Kind       string `json:"kind"`
+	Date       int64  `json:"date"`
+	Outgoing   bool   `json:"outgoing,omitempty"`
+	ReplyToID  string `json:"reply_to_id,omitempty"`
 }
 
 // Message is one history message returned by the "read" op (mirrors the fields
@@ -128,6 +182,17 @@ type Event struct {
 	// outbound / notes-to-self). Triage drops these so it never re-ingests your
 	// own traffic across any transport.
 	FromSelf bool `json:"from_self,omitempty"`
+
+	// Group calls. For a group event Address/ChatID name the GROUP and
+	// MessageID/MsgRef the calling message; SenderID is the person (Telegram
+	// user id or WhatsApp JID). Call is "mention" or "reply". Only calls from
+	// listen=1 groups are emitted; 1:1 events leave these empty. Subscribers
+	// that do not handle groups must drop events with Group set.
+	Group     bool   `json:"group,omitempty"`
+	GroupName string `json:"group_name,omitempty"`
+	SenderID  string `json:"sender_id,omitempty"`
+	ReplyToID string `json:"reply_to_id,omitempty"`
+	Call      string `json:"call,omitempty"`
 }
 
 // Contact is a person in the comms-owned contacts directory (comms.db). It is
@@ -217,4 +282,10 @@ type Response struct {
 	Connectors []Connector  `json:"connectors,omitempty"`
 	Version    int          `json:"version,omitempty"` // daemon's ProtocolVersion (hello / mismatch reply)
 	Error      string       `json:"error,omitempty"`
+
+	// Group ops.
+	Group         *Group         `json:"group,omitempty"`
+	Groups        []Group        `json:"groups,omitempty"`
+	Members       []GroupMember  `json:"members,omitempty"`
+	GroupMessages []GroupMessage `json:"group_messages,omitempty"`
 }
