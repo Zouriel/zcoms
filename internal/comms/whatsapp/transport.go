@@ -43,15 +43,16 @@ type Transport struct {
 	dbPath string
 	log    waLog.Logger
 
-	mu      sync.Mutex
-	client  *whatsmeow.Client
-	status  transport.ConnStatus
-	qr      string // current QR payload while State==action_required/needs_qr
-	me      string // own JID string, for FromSelf
-	inbound chan<- transport.Inbound
-	ctx     context.Context // the Start ctx, reused to re-arm the QR channel
-	db      *sql.DB         // the device-store DB; also holds our zc_messages history table
-	policy  transport.GroupPolicy
+	mu        sync.Mutex
+	container *sqlstore.Container // device store; a fresh device is made from it to re-pair after a logout
+	client    *whatsmeow.Client
+	status    transport.ConnStatus
+	qr        string // current QR payload while State==action_required/needs_qr
+	me        string // own JID string, for FromSelf
+	inbound   chan<- transport.Inbound
+	ctx       context.Context // the Start ctx, reused to re-arm the QR channel
+	db        *sql.DB         // the device-store DB; also holds our zc_messages history table
+	policy    transport.GroupPolicy
 
 	// download overrides the media fetch (tests).
 	download func(m *waE2E.Message) ([]byte, error)
@@ -133,6 +134,9 @@ func (t *Transport) Start(ctx context.Context, inbound chan<- transport.Inbound)
 		t.setStatus(transport.StateError, err.Error())
 		return fmt.Errorf("whatsmeow store upgrade: %w", err)
 	}
+	t.mu.Lock()
+	t.container = container
+	t.mu.Unlock()
 	// Our own history table lives alongside whatsmeow's tables in the same DB, so
 	// the daemon can serve `read`/`unread` for WhatsApp (whatsmeow keeps no
 	// queryable history of its own).
@@ -231,9 +235,22 @@ func (t *Transport) repair() error {
 		return nil
 	}
 	// Unpaired: a QR channel must be requested before Connect, so drop the
-	// current connection first, then arm a fresh one.
+	// current connection first, then arm a fresh one. After a logout whatsmeow
+	// has deleted the device the client holds ("invalid use of deleted
+	// device"), so pairing always starts from a brand new device and client.
 	c.Disconnect()
 	t.setStatus(transport.StateConnecting, "")
+	t.mu.Lock()
+	container := t.container
+	t.mu.Unlock()
+	if container != nil {
+		c = whatsmeow.NewClient(container.NewDevice(), t.log)
+		c.AddEventHandler(t.handleEvent)
+		t.mu.Lock()
+		t.client = c
+		t.me = ""
+		t.mu.Unlock()
+	}
 	qrChan, err := c.GetQRChannel(ctx)
 	if err != nil {
 		t.setStatus(transport.StateError, err.Error())
