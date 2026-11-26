@@ -22,11 +22,10 @@ type Name string
 
 // In the 3-repo architecture the installables are tiers, each its own user-space
 // binary over IPC: the agent (the whole AI layer — bridge, triage, errands,
-// session manager) and the modules above it (team, console). Comms is the always-
+// session manager) and the modules above it (console, commerce). Comms is the always-
 // present core (`zc tg`/`zc wa`), never an installable.
 const (
 	Agent    Name = "agent"
-	Team     Name = "team"
 	Console  Name = "console"
 	Commerce Name = "commerce"
 )
@@ -42,7 +41,6 @@ type Meta struct {
 // Each declares its dependency tier(s); `zc install` resolves the chain.
 var registry = []Meta{
 	{Agent, "AI layer — interactive bridge, triage, errands, session manager (agent.db)", nil},
-	{Team, "Team coordination, task delegation, GitHub Projects sync, and standups", []Name{Agent}},
 	{Console, "Owner-only local web UI to edit every store (contacts/workspaces/personas/…)", []Name{Agent}},
 	{Commerce, "Telegram-Stars commerce control plane — stores, products, orders, refunds, billing", nil},
 }

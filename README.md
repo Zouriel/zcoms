@@ -9,7 +9,7 @@ directory** (`comms.db`) — all from your terminal, all **scriptable** (CI, cro
 It is a **dumb pipe**: it knows nothing about AI. The AI layer (interactive bridge, triage,
 errands, session manager, personas) runs in the separate **`zcoms-agent`** process and
 reaches Telegram/WhatsApp through this daemon. Install it with `zc install agent`; install
-modules like team with `zc install <module>`.
+modules like the console with `zc install <module>`.
 
 **Published contract:** other tiers import `github.com/Zouriel/zcoms/client` — the wire
 protocol, the IPC `Client`, the component `Harness`, and `ProtocolVersion` (advertised by

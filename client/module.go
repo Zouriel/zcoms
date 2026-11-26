@@ -17,7 +17,7 @@ type ModuleResult struct {
 }
 
 // ModuleCommand forwards a command line to a module/agent listening on
-// <socketFile> in the app dir (e.g. "agent.sock", "team.sock") and returns its
+// <socketFile> in the app dir (e.g. "agent.sock", "commerce.sock") and returns its
 // reply. Running is false when nothing is listening, so the CLI can say
 // "install it" instead of erroring. This is the generic module router seam: a
 // `zc` verb that drives the agent or a module is a ~3-line pass-through to here.

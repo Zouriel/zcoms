@@ -21,12 +21,11 @@ const daemonUnit = "zcoms-daemon.service"
 
 func init() {
 	installCommand := &cobra.Command{
-		Use:   "install [agent|team|console|commerce]",
-		Short: "Install a tier (agent AI layer, or a module like team/console/commerce)",
+		Use:   "install [agent|console|commerce]",
+		Short: "Install a tier (agent AI layer, or a module like console/commerce)",
 		Long: "zcoms ships with Telegram + WhatsApp comms (`zc tg` / `zc wa`). Everything\n" +
 			"above is an opt-in tier — its own pure-Go binary, composing over IPC:\n\n" +
 			"  agent    — the AI layer: bridge, triage, errands, session manager (agent.db)\n" +
-			"  team     — team coordination, delegation, GitHub sync, standups (needs agent)\n" +
 			"  console  — owner-only local web UI to edit every store (needs agent)\n" +
 			"  commerce — Telegram-Stars commerce control plane (core-only; no agent)\n\n" +
 			"Run with no argument to see what's installed. Installing a module pulls in\n" +
@@ -44,7 +43,7 @@ func init() {
 	}
 
 	uninstallCommand := &cobra.Command{
-		Use:          "uninstall <agent|team|console|commerce>",
+		Use:          "uninstall <agent|console|commerce>",
 		Short:        "Remove an installed component (and anything that depends on it)",
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
@@ -138,7 +137,6 @@ func runInstall(name string, force bool) error {
 // installable → its GitHub repo + binary name, for the prebuilt-release download.
 var componentArtifact = map[components.Name]struct{ repo, bin string }{
 	components.Agent:    {"Zouriel/zcoms-agent", "zcoms-agent"},
-	components.Team:     {"Zouriel/zcoms-team", "zcoms-team"},
 	components.Console:  {"Zouriel/zcoms-console", "zcoms-console"},
 	components.Commerce: {"Zouriel/zcoms-commerce", "zcoms-commerce"},
 }
@@ -231,10 +229,6 @@ func printPostInstallHints(installed []components.Name) {
 			fmt.Println("   • Set discovery roots:  zc agent settings set discovery_roots <path[,path]>")
 			fmt.Println("   • Find your repos:      zc agent workspace sync")
 			fmt.Println("   • Pick a backend:       zc agent persona set bridge backend <claude|codex>")
-		case components.Team:
-			fmt.Println("   • Create a project:   zc team delegator create <name>")
-			fmt.Println("   • Add staff:          zc team staff add <delegator> <@user> <role> <limit>")
-			fmt.Println("   • Schedule a standup: zc team standup create <name> <delegator> <@group> <HH:MM> <tz>")
 		case components.Console:
 			fmt.Println("   • Open the console:   zc console   (then log in — localhost only)")
 		case components.Commerce:

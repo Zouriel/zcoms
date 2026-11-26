@@ -51,14 +51,14 @@ func (h *Harness) Run(ctx context.Context, role string, handler func(Event)) {
 }
 
 // CommandRequest is one line on a component's own command socket
-// (errands.sock / team.sock / …): a text command and who issued it.
+// (agent.sock / commerce.sock / …): a text command and who issued it.
 type CommandRequest struct {
 	Text  string `json:"text"`
 	Actor string `json:"actor,omitempty"`
 }
 
 // CommandResponse is the component's reply on its command socket. Continue keeps
-// a multi-turn flow (e.g. team add-task) open for the next line.
+// a multi-turn flow (e.g. an interactive setup) open for the next line.
 type CommandResponse struct {
 	OK       bool   `json:"ok"`
 	Reply    string `json:"reply,omitempty"`

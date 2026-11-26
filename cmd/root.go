@@ -14,8 +14,8 @@ var rootCmd = &cobra.Command{
 	Short: "zcoms — Telegram + WhatsApp comms from your terminal",
 	Long: "zcoms (zc) sends & receives messages and media across Telegram (`zc tg`)\n" +
 		"and WhatsApp (`zc wa`), and manages a contacts directory (`zc contacts`). The\n" +
-		"AI layer (bridge, triage, errands, session manager) and modules (team, console,\n" +
-		"commerce) are opt-in tiers — add them with `zc install <agent|team|console|commerce>`.",
+		"AI layer (bridge, triage, errands, session manager) and modules (console,\n" +
+		"commerce) are opt-in tiers: add them with `zc install <agent|console|commerce>`.",
 }
 
 var (
@@ -25,7 +25,7 @@ var (
 
 // gatedCommands maps a root command name to a component that must be installed
 // for it to be usable. In the 3-repo architecture the agent-driving commands
-// (init/allowlist/locations/agents/triage/errand/agent/team) are thin clients of
+// (init/allowlist/locations/agents/triage/errand/agent) are thin clients of
 // the agent/module sockets and self-report when their tier isn't running
 // ("install it with `zc install agent`"), so nothing is hard-gated here. Left as
 // a seam for any future module that genuinely needs hiding until installed.
