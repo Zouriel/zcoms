@@ -18,33 +18,18 @@ var (
 	looksLikeWANumber = whatsapp.LooksLikeNumber
 )
 
-// resolveWA turns a recipient (phone number, JID, or a contact name) into a
-// WhatsApp JID. Names are looked up in the contacts directory and resolved to
-// the contact's WhatsApp address (its number, or an explicit wa id).
+// resolveWA turns a recipient into what the daemon takes: a phone number
+// becomes a JID here, while a contact or group name is passed through for the
+// daemon to resolve (it owns the contacts directory and the group registry).
 func resolveWA(to string) (string, error) {
 	to = strings.TrimSpace(to)
 	if to == "" {
-		return "", fmt.Errorf("a recipient (number, jid, or contact name) is required")
+		return "", fmt.Errorf("a recipient (number, jid, contact or group name) is required")
 	}
 	if looksLikeWANumber(to) {
 		return waJID(to), nil
 	}
-	c, ok := daemonClient()
-	if !ok {
-		return "", fmt.Errorf("the comms daemon isn't running — needed to resolve a contact name (or pass a number)")
-	}
-	matches, err := c.ResolveContact(to)
-	if err != nil {
-		return "", err
-	}
-	if len(matches) == 0 {
-		return "", fmt.Errorf("no contact matching %q (try a phone number)", to)
-	}
-	addr := matches[0].Address("whatsapp")
-	if addr == "" {
-		return "", fmt.Errorf("contact %q has no WhatsApp number", matches[0].Name)
-	}
-	return waJID(addr), nil
+	return to, nil
 }
 
 func init() {
@@ -101,7 +86,7 @@ func init() {
 	}
 
 	sendCommand := &cobra.Command{
-		Use:   "send <number|jid|contact> <message>",
+		Use:   "send <number|jid|contact|group> <message>",
 		Short: "Send a WhatsApp message",
 		Args:  cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -113,8 +98,12 @@ func init() {
 			if err != nil {
 				return err
 			}
-			if _, err := c.SendOn("whatsapp", jid, strings.Join(args[1:], " ")); err != nil {
+			resp, err := c.SendOn("whatsapp", jid, strings.Join(args[1:], " "))
+			if err != nil {
 				return err
+			}
+			if resp.Address != "" {
+				jid = resp.Address
 			}
 			fmt.Printf("Message sent ✅ (%s)\n", jid)
 			return nil
@@ -243,6 +232,7 @@ func init() {
 	}
 	unreadCommand.Flags().BoolVar(&unreadJSON, "json", false, "Emit messages as JSON lines")
 
-	waCommand.AddCommand(statusCommand, loginCommand, sendCommand, sendFileCommand, readCommand, unreadCommand)
+	waCommand.AddCommand(statusCommand, loginCommand, sendCommand, sendFileCommand, readCommand, unreadCommand,
+		groupCmd("whatsapp", "WhatsApp"))
 	rootCmd.AddCommand(waCommand)
 }

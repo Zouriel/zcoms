@@ -14,7 +14,7 @@ import (
 
 func init() {
 	sendMessageCommand := &cobra.Command{
-		Use:   "send @username message",
+		Use:   "send <@username|contact|group|chat id> <message>",
 		Short: "Send a Telegram message to a user",
 		Args:  cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {

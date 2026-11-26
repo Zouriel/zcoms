@@ -36,6 +36,16 @@ func forwardToAgent(line string) error {
 	return nil
 }
 
+// agentCommand sends a command line to the agent and returns its reply
+// without printing it.
+func agentCommand(line string) (string, error) {
+	res, err := client.ModuleCommand("agent.sock", strings.TrimSpace(line), ownerActor())
+	if !res.Running {
+		return "", fmt.Errorf("the agent isn't running: install it with `zc install agent`")
+	}
+	return res.Reply, err
+}
+
 // passthroughCmd builds a cobra command that forwards its whole line (prefixed
 // with verb) to the agent socket.
 func passthroughCmd(verb, short, long string) *cobra.Command {

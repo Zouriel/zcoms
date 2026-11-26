@@ -140,6 +140,39 @@ opt-in [components](#components) — once installed, these commands light up:
 Until a component is installed, its commands are hidden from `zc --help`; running
 one prints an install hint.
 
+## Groups and projects
+
+The agent's own Telegram and WhatsApp accounts can sit in group chats. In a group it
+stays silent until someone **calls** it: an @mention of its account, or a reply to one
+of its messages. It answers that one message as a reply, briefly. Every group is
+**off** until you turn it on.
+
+```sh
+zc config owner Zouriel                      # the contact added to every group zc creates
+zc tg group create "Acme build" Ibrahim Aisha # creates a supergroup, adds them and the owner
+zc tg group list                             # groups this account is in (synced to comms.db)
+zc tg group members "Acme build"
+zc tg group view "Acme build" --limit 10     # latest 10; --around <msg id>; --follow to stay attached
+zc tg send "Acme build" "deploy is green"    # send by group name, -100… chat id, or @groupname
+zc wa group create Family +9607000001        # the same commands under `zc wa group`
+
+zc group on "Acme build"                     # general group: answers calls, web search only
+zc group off "Acme build" --wa               # --wa for a WhatsApp group
+```
+
+A **project group** is bound to one repo. Run `zc project init` inside the repo: it asks
+for the group and whether to follow tasks (store messages and post a morning standup).
+Calls in that group are answered from the code (read, search and shell; never edit).
+From anywhere inside the folder, `zc project say "<text>"` posts to the project's group,
+and `zc project status|members|tasks|follow|standup|remove` manage it.
+
+Safety: an off group gets no replies, no stored messages and no reads. In a group that
+is on but not followed, only calls reach the agent. The agent never starts edits,
+errands or reminders from a group, and only the owner (the CLI or console) can turn a
+group on or bind a project. Telegram groups are created as supergroups so their chat id
+never changes. WhatsApp keeps followed groups for 30 days and the last 200 messages of
+other groups that are on; nothing for groups that are off.
+
 ## Components
 
 zcoms ships lean — just Telegram + WhatsApp comms. The agent features run inside a
