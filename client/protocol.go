@@ -198,27 +198,22 @@ type Event struct {
 // Contact is a person in the comms-owned contacts directory (comms.db). It is
 // addressing data — every tier resolves "message <name> on whatever channel"
 // through here. Fields are explicit per channel rather than a generic handle
-// list: Phone is the universal number that addresses Telegram, WhatsApp and
-// Viber; the per-platform ids override it where a contact's handle differs (or,
-// for Discord, where there is no phone to fall back to). Discord and Viber are
-// reserved for future transports — stored now, not yet routed.
+// list: Phone is the universal number that addresses Telegram and WhatsApp; the
+// per-platform ids override it where a contact's handle differs.
 type Contact struct {
 	ID       int64    `json:"id,omitempty"`
 	Name     string   `json:"name"`
 	Aliases  []string `json:"aliases,omitempty"`  // alternate names; resolvable, unique across all names+aliases
-	Phone    string   `json:"phone,omitempty"`    // mobile number; addresses Telegram/WhatsApp/Viber
+	Phone    string   `json:"phone,omitempty"`    // mobile number; addresses Telegram/WhatsApp
 	Email    string   `json:"email,omitempty"`    // contact info (not a messaging channel)
 	Telegram string   `json:"telegram,omitempty"` // @handle or id; falls back to Phone
 	WhatsApp string   `json:"whatsapp,omitempty"` // wa id/number; falls back to Phone
-	Discord  string   `json:"discord,omitempty"`  // discord id; NO phone fallback (future)
-	Viber    string   `json:"viber,omitempty"`    // viber id; falls back to Phone (future)
-	Github   string   `json:"github,omitempty"`   // github handle; contact info (not a messaging channel)
 	Note     string   `json:"note,omitempty"`
 }
 
 // Address returns the contact's address on a platform: the platform-specific id
-// when set, otherwise the Phone number — because a phone reaches Telegram,
-// WhatsApp and Viber, but never Discord. Returns "" when the contact has no
+// when set, otherwise the Phone number, which reaches both Telegram and
+// WhatsApp. Returns "" when the contact has no
 // usable address there.
 func (c Contact) Address(platform string) string {
 	switch strings.ToLower(strings.TrimSpace(platform)) {
@@ -226,10 +221,6 @@ func (c Contact) Address(platform string) string {
 		return firstNonEmpty(c.Telegram, c.Phone)
 	case "whatsapp":
 		return firstNonEmpty(c.WhatsApp, c.Phone)
-	case "viber":
-		return firstNonEmpty(c.Viber, c.Phone)
-	case "discord":
-		return c.Discord // no phone fallback
 	}
 	return ""
 }

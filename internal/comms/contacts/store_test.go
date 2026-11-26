@@ -18,22 +18,18 @@ func openTmp(t *testing.T) *Store {
 	return s
 }
 
-func TestAliasesAndGithub(t *testing.T) {
+func TestAliases(t *testing.T) {
 	s := openTmp(t)
 
 	c, err := s.Create(Owner, client.Contact{
 		Name:    "Ali",
 		Aliases: []string{"Aliyya", "  Ali bro ", "aliyya"}, // dup (case) + whitespace
-		Github:  "@ali-gh",                                  // leading @ is stripped (github handles have no @)
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	if len(c.Aliases) != 2 {
 		t.Fatalf("aliases not de-duped/trimmed: %#v", c.Aliases)
-	}
-	if c.Github != "ali-gh" {
-		t.Fatalf("github not @-stripped: %q", c.Github)
 	}
 
 	// Aliases survive a round-trip through the store.
@@ -43,9 +39,6 @@ func TestAliasesAndGithub(t *testing.T) {
 	}
 	if len(got.Aliases) != 2 || got.Aliases[0] != "Aliyya" {
 		t.Fatalf("aliases not persisted: %#v", got.Aliases)
-	}
-	if got.Github != "ali-gh" {
-		t.Fatalf("github not persisted: %q", got.Github)
 	}
 }
 
@@ -94,18 +87,18 @@ func TestUniqueNamesAndAliases(t *testing.T) {
 	}
 }
 
-// A live comms.db keeps columns for channels that were removed (instagram,
-// discord, viber). They are never read, and a contact that has one still
+// A live comms.db keeps columns for channels that were retired. They are
+// never read, and a contact that has one still
 // resolves on the channels that remain.
 func TestLegacyChannelColumnsAreIgnored(t *testing.T) {
 	s := openTmp(t)
-	for _, col := range []string{"instagram", "discord", "viber"} {
+	for _, col := range []string{"retired_a", "retired_b"} {
 		if _, err := s.db.Exec(`ALTER TABLE contacts ADD COLUMN ` + col + ` TEXT`); err != nil &&
 			!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 			t.Fatalf("add %s: %v", col, err)
 		}
 	}
-	if _, err := s.db.Exec(`INSERT INTO contacts(name, phone, instagram, discord, viber) VALUES('Raani', '+9609752353', '@r', 'd1', 'v1')`); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO contacts(name, phone, retired_a, retired_b) VALUES('Raani', '+9609752353', '@r', 'x1')`); err != nil {
 		t.Fatalf("insert: %v", err)
 	}
 	got, err := s.Resolve("Raani")
@@ -115,7 +108,7 @@ func TestLegacyChannelColumnsAreIgnored(t *testing.T) {
 	if a := got[0].Address("whatsapp"); a != "+9609752353" {
 		t.Fatalf("whatsapp address %q, want the phone", a)
 	}
-	if a := got[0].Address("instagram"); a != "" {
-		t.Fatalf("instagram address %q, want none", a)
+	if a := got[0].Address("retired_a"); a != "" {
+		t.Fatalf("retired channel address %q, want none", a)
 	}
 }

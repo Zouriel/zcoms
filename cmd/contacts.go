@@ -24,17 +24,13 @@ func openContacts() (*contacts.Store, error) {
 }
 
 // channelFlags registers the per-channel fields shared by `add` and `edit` and
-// returns accessors. Phone is the universal number (Telegram/WhatsApp/Viber);
-// Discord needs its own id. Discord/Viber are stored for the future.
+// returns accessors. Phone is the universal number (Telegram and WhatsApp).
 func channelFlags(c *cobra.Command, t *client.Contact) {
 	c.Flags().StringSliceVar(&t.Aliases, "alias", nil, "Alternate name (repeatable or comma-separated; unique across all names+aliases)")
-	c.Flags().StringVar(&t.Phone, "phone", "", "Mobile number (reaches Telegram/WhatsApp/Viber)")
+	c.Flags().StringVar(&t.Phone, "phone", "", "Mobile number (reaches Telegram and WhatsApp)")
 	c.Flags().StringVar(&t.Email, "email", "", "Email address")
 	c.Flags().StringVar(&t.Telegram, "telegram", "", "Telegram @handle (falls back to --phone)")
 	c.Flags().StringVar(&t.WhatsApp, "whatsapp", "", "WhatsApp id/number (falls back to --phone)")
-	c.Flags().StringVar(&t.Discord, "discord", "", "Discord id (no phone fallback; future)")
-	c.Flags().StringVar(&t.Viber, "viber", "", "Viber id (falls back to --phone; future)")
-	c.Flags().StringVar(&t.Github, "github", "", "GitHub handle (contact info)")
 	c.Flags().StringVar(&t.Note, "note", "", "A free-text note")
 }
 
@@ -43,9 +39,8 @@ func init() {
 		Use:   "contacts",
 		Short: "Manage the contacts directory (people + their per-channel addresses)",
 		Long: "The comms-owned address book (comms.db). Each contact has explicit channels:\n" +
-			"a phone number (which reaches Telegram, WhatsApp and Viber), an email, and\n" +
-			"per-platform ids (telegram/whatsapp/discord/viber) that override the phone.\n" +
-			"Discord needs its own id — a phone can't reach it. Every tier resolves\n" +
+			"a phone number (which reaches Telegram and WhatsApp), an email, and\n" +
+			"per-platform ids (telegram/whatsapp) that override the phone. Every tier resolves\n" +
 			"\"message <name> on whatever channel\" through here.",
 	}
 
@@ -76,9 +71,6 @@ func init() {
 					{"email", c.Email},
 					{"telegram", c.Telegram},
 					{"whatsapp", c.WhatsApp},
-					{"discord", c.Discord},
-					{"viber", c.Viber},
-					{"github", c.Github},
 					{"note", c.Note},
 				} {
 					if f.val != "" {
@@ -138,8 +130,7 @@ func init() {
 			// patch over the existing row (the store does a full overwrite).
 			for name, dst := range map[string]*string{
 				"phone": &cur.Phone, "email": &cur.Email, "telegram": &cur.Telegram,
-				"whatsapp": &cur.WhatsApp,
-				"discord":  &cur.Discord, "viber": &cur.Viber, "github": &cur.Github, "note": &cur.Note,
+				"whatsapp": &cur.WhatsApp, "note": &cur.Note,
 			} {
 				if cmd.Flags().Changed(name) {
 					v, _ := cmd.Flags().GetString(name)
