@@ -240,6 +240,7 @@ type Caps struct {
 	BlockingAsk bool `json:"blocking_ask"`
 	Files       bool `json:"files"`
 	Presence    bool `json:"presence"`
+	Groups      bool `json:"groups,omitempty"`
 }
 
 // Connector is one transport's live status, returned by the "connectors" op and

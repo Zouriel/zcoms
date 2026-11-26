@@ -36,6 +36,7 @@ type Caps struct {
 	Receive     bool `json:"receive"`
 	BlockingAsk bool `json:"blocking_ask"`
 	Files       bool `json:"files"`
+	Groups      bool `json:"groups"`
 	Presence    bool `json:"presence"`
 }
 
@@ -68,8 +69,9 @@ const (
 )
 
 // Address identifies a conversation on a specific transport. ID is the
-// transport-native id as a string: a Telegram chat id or a WhatsApp JID. Sends route on Transport; replies go back on the
-// same Address the inbound arrived from.
+// transport-native id as a string: a Telegram chat id or a WhatsApp JID. Sends
+// route on Transport; replies go back on the same Address the inbound arrived
+// from.
 type Address struct {
 	Transport string `json:"transport"`
 	ID        string `json:"id"`
@@ -132,4 +134,13 @@ type Inbound struct {
 	Files     []string // local paths to any downloaded attachments
 	MessageID string   // transport message id
 	At        time.Time
+
+	// Group calls. From is the group; SenderID is the person (Telegram user id
+	// or WhatsApp JID). Call is CallMention or CallReply. A transport emits a
+	// group Inbound only for a call in a listen group; 1:1 leaves these empty.
+	Group     bool
+	GroupName string
+	SenderID  string
+	ReplyToID string
+	Call      string
 }

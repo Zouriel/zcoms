@@ -51,6 +51,7 @@ type Transport struct {
 	inbound chan<- transport.Inbound
 	ctx     context.Context // the Start ctx, reused to re-arm the QR channel
 	db      *sql.DB         // the device-store DB; also holds our zc_messages history table
+	policy  transport.GroupPolicy
 }
 
 // New returns a WhatsApp transport whose device session persists at dbPath
@@ -68,7 +69,7 @@ func (t *Transport) Name() string { return "whatsapp" }
 // Caps: WhatsApp receives and sends files but has no synchronous blocking-ask —
 // it gets the async auto-reply path.
 func (t *Transport) Caps() transport.Caps {
-	return transport.Caps{Receive: true, Files: true}
+	return transport.Caps{Receive: true, Files: true, Groups: true}
 }
 
 func (t *Transport) Status() transport.ConnStatus {
@@ -315,11 +316,12 @@ func (t *Transport) handleEvent(evt any) {
 }
 
 // onMessage converts an inbound 1:1 WhatsApp message into a transport.Inbound.
-// Groups, broadcasts and newsletters are ignored — comms handles direct chats
-// only, mirroring the Telegram transport.
+// Group messages go to onGroupMessage (calls in listen groups only);
+// broadcasts and newsletters are ignored.
 func (t *Transport) onMessage(e *events.Message) {
 	info := e.Info
-	if info.IsGroup {
+	if info.IsGroup || info.Chat.Server == types.GroupServer {
+		t.onGroupMessage(e)
 		return
 	}
 	// Direct chats only. WhatsApp now addresses 1:1 chats either by phone number
@@ -573,7 +575,11 @@ func (t *Transport) Send(to transport.Address, text string) (transport.MsgRef, e
 		return transport.MsgRef{}, err
 	}
 	// Record our own outbound so chat history shows both sides.
-	t.storeMessage(jid.String(), resp.ID, "you", true, text, "messageText", "", resp.Timestamp, false)
+	if isGroupJID(jid.String()) {
+		t.storeOwnGroupSend(jid.String(), resp.ID, text, "messageText", resp.Timestamp, "")
+	} else {
+		t.storeMessage(jid.String(), resp.ID, "you", true, text, "messageText", "", resp.Timestamp, false)
+	}
 	return transport.MsgRef{ID: resp.ID, ChatID: jid.String()}, nil
 }
 
@@ -620,7 +626,11 @@ func (t *Transport) SendFile(to transport.Address, path, caption string) (transp
 	if err != nil {
 		return transport.MsgRef{}, err
 	}
-	t.storeMessage(jid.String(), resp.ID, "you", true, caption, "messageDocument", path, resp.Timestamp, false)
+	if isGroupJID(jid.String()) {
+		t.storeOwnGroupSend(jid.String(), resp.ID, caption, "messageDocument", resp.Timestamp, "")
+	} else {
+		t.storeMessage(jid.String(), resp.ID, "you", true, caption, "messageDocument", path, resp.Timestamp, false)
+	}
 	return transport.MsgRef{ID: resp.ID, ChatID: jid.String(), Label: name}, nil
 }
 

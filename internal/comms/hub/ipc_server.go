@@ -98,7 +98,18 @@ func (d *daemon) handleIPC(conn net.Conn) {
 			writeIPC(conn, client.Response{Error: err.Error()})
 			return
 		}
-		ref, err := t.Send(transport.Address{Transport: transportName(req), ID: to}, req.Text)
+		addr := transport.Address{Transport: transportName(req), ID: to}
+		var ref transport.MsgRef
+		if req.ReplyTo != "" || len(req.Mentions) > 0 {
+			rs, ok := t.(transport.RichSender)
+			if !ok {
+				writeIPC(conn, client.Response{Error: transportName(req) + " cannot quote or tag in a send"})
+				return
+			}
+			ref, err = rs.SendWith(addr, req.Text, transport.SendOptions{ReplyTo: req.ReplyTo, Mentions: req.Mentions})
+		} else {
+			ref, err = t.Send(addr, req.Text)
+		}
 		if err != nil {
 			writeIPC(conn, client.Response{Error: err.Error()})
 			return
@@ -197,6 +208,10 @@ func (d *daemon) handleIPC(conn net.Conn) {
 			writeIPC(conn, client.Response{Error: err.Error()})
 			return
 		}
+		if userID == 0 || chatID < 0 {
+			writeIPC(conn, client.Response{Error: "ask works only in a private chat, not a group"})
+			return
+		}
 		// Empty text = `zc tg chat` "just listen" mode: don't send, only wait.
 		if req.Text != "" {
 			if _, err := telegram.SendTextMessage(d.tdjson, d.clientID, chatID, req.Text); err != nil {
@@ -289,6 +304,10 @@ func (d *daemon) handleIPC(conn net.Conn) {
 	case "subscribe":
 		d.serveSubscription(conn, req.Role)
 		return
+
+	// --- group registry and group ops ---------------------------------------
+	case "group_create", "group_add", "group_list", "group_members", "group_read", "group_set", "group_get":
+		d.handleGroupOp(conn, req)
 
 	// --- contacts directory (comms.db) ---------------------------------------
 	case "contact_resolve", "contact_list", "contact_create", "contact_update",

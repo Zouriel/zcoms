@@ -43,6 +43,7 @@ type daemon struct {
 	pendingAsk map[int64][]chan string // user id -> queued `zc tg ask` waiters
 	nameCache  map[int64]string        // user id -> display name
 	me         int64                   // telegram getMe id (FromSelf); guarded by mu
+	meUsername string                  // telegram getMe username (group mentions); guarded by mu
 
 	// subscribers receive pushed incoming-message events by role. The daemon
 	// never blocks on a slow subscriber (pushEvent drops when the buffer fills).
@@ -89,6 +90,13 @@ func RunDaemon(tdjson *telegram.TDJSON, clientID int32, store *contacts.Store) e
 		d.logf("whatsapp transport disabled: %v", err)
 	}
 
+	// Transports that keep their own group history follow the registry flags.
+	for _, t := range d.registry {
+		if ps, ok := t.(transport.GroupPolicySetter); ok {
+			ps.SetGroupPolicy(d.groupFlags)
+		}
+	}
+
 	if err := d.serveIPC(); err != nil {
 		fmt.Printf("  ! IPC socket unavailable (zc tg send/ask won't route through daemon): %v\n", err)
 	}
@@ -128,6 +136,10 @@ func (d *daemon) consumeInbound() {
 // path) before broadcasting to the subscribed agent tier, which owns all policy
 // (allow-list, routing, auto-reply, triage). Comms itself decides nothing.
 func (d *daemon) deliverInbound(in transport.Inbound) {
+	if in.Group {
+		d.broadcast(d.groupEvent(in))
+		return
+	}
 	if in.From.Transport == "telegram" {
 		if uid, err := strconv.ParseInt(in.From.ID, 10, 64); err == nil {
 			if d.resolvePendingAsk(uid, in.Text) {
@@ -220,6 +232,7 @@ func (d *daemon) connectors() []client.Connector {
 				BlockingAsk: caps.BlockingAsk,
 				Files:       caps.Files,
 				Presence:    caps.Presence,
+				Groups:      caps.Groups,
 			},
 		}
 		if !st.Since.IsZero() {
@@ -246,6 +259,9 @@ func (d *daemon) senderName(userID int64) string {
 	d.mu.Unlock()
 
 	name := ""
+	if d.tdjson == nil {
+		return fmt.Sprintf("user:%d", userID)
+	}
 	if handle, err := telegram.FetchUserHandle(d.tdjson, d.clientID, userID); err == nil && handle != "" {
 		name = handle
 	} else if dn, err := telegram.FetchUserDisplayName(d.tdjson, d.clientID, userID); err == nil && dn != "" {
@@ -260,8 +276,8 @@ func (d *daemon) senderName(userID int64) string {
 	return name
 }
 
-// resolveChat turns a numeric id, an "@username", or a contact's name into a
-// chat id (and user id).
+// resolveChat turns a numeric id, an "@username", a contact's name or a group's
+// name into a chat id and user id. A group comes back with user id 0.
 //
 // The contacts directory is consulted for a bare name because that is the
 // spelling callers naturally have: the directory is what list_contacts hands an
@@ -272,14 +288,25 @@ func (d *daemon) senderName(userID int64) string {
 func (d *daemon) resolveChat(to string) (chatID, userID int64, err error) {
 	to = strings.TrimSpace(to)
 	if id, ok := chatIDOf(to); ok {
+		if id < 0 {
+			return id, 0, nil // a group or supergroup
+		}
 		return id, id, nil // private chat id == user id in TDLib
 	}
 
 	// An explicit "@handle" means Telegram, so it skips the directory. A bare
-	// word is looked up as a contact first: the owner's own directory outranks
-	// whoever happens to hold that public username.
+	// word is looked up as a contact (or a registered group) first: the owner's
+	// own directory outranks whoever happens to hold that public username.
 	handle := to
 	if !strings.HasPrefix(to, "@") {
+		g, ok, e := d.groupForName("telegram", to)
+		if e != nil {
+			return 0, 0, e
+		}
+		if ok {
+			id, _ := chatIDOf(g.NativeID)
+			return id, 0, nil
+		}
 		if resolved, name, e := d.telegramHandleFor(to); e != nil {
 			return 0, 0, e
 		} else if resolved != "" {
@@ -294,6 +321,15 @@ func (d *daemon) resolveChat(to string) (chatID, userID int64, err error) {
 
 	uid, e := telegram.ResolveUserIdentifierByUsername(d.tdjson, d.clientID, handle)
 	if e != nil {
+		// Not a user: a public group's @username still names a chat.
+		if strings.HasPrefix(handle, "@") {
+			if cid, ce := telegram.ResolveChatIdentifierByUsername(d.tdjson, d.clientID, handle); ce == nil {
+				if cid < 0 {
+					return cid, 0, nil
+				}
+				return cid, cid, nil
+			}
+		}
 		return 0, 0, e
 	}
 	cid, e := telegram.CreatePrivateChat(d.tdjson, d.clientID, uid)
@@ -340,9 +376,18 @@ func (d *daemon) resolveWhatsApp(to string) (string, error) {
 		return "", fmt.Errorf("a recipient (number, jid, or contact name) is required")
 	}
 
-	// A number or a JID is already an address; only a name needs looking up.
+	// A number or a JID (including a group's @g.us JID) is already an address;
+	// only a name needs looking up.
 	if whatsapp.LooksLikeNumber(to) {
 		return whatsapp.JID(to), nil
+	}
+
+	g, ok, err := d.groupForName("whatsapp", to)
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		return g.NativeID, nil
 	}
 
 	c, ok, err := d.contactFor(to)

@@ -9,7 +9,7 @@ import (
 
 // The WhatsApp transport keeps its own message history because whatsmeow exposes
 // messages only as live events — there is no queryable backlog. We persist every
-// 1:1 message (both directions) into zc_messages in the same SQLite DB as the
+// 1:1 message (both directions), plus listen/follow group messages, into zc_messages in the same SQLite DB as the
 // device session, so the daemon can serve read/unread/mark_read for WhatsApp the
 // way it does for Telegram.
 
@@ -38,7 +38,18 @@ CREATE INDEX IF NOT EXISTS idx_zc_messages_unread ON zc_messages(unread);
 -- One row per (chat, message id): a redelivered message (on reconnect / history
 -- sync) is ignored on insert, so it never re-surfaces as unread after being read.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_zc_messages_unique ON zc_messages(chat_jid, msg_id);`)
-	return err
+	if err != nil {
+		return err
+	}
+	// Group columns: group rows are never unread, carry the sender's JID, and
+	// the id of the message they reply to.
+	for _, col := range []string{"is_group INTEGER NOT NULL DEFAULT 0", "sender_jid TEXT", "reply_to TEXT"} {
+		if _, err := db.Exec(`ALTER TABLE zc_messages ADD COLUMN ` + col); err != nil &&
+			!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+			return err
+		}
+	}
+	return nil
 }
 
 // storeMessage records one 1:1 message. Best-effort: a storage failure must
@@ -130,7 +141,7 @@ func (t *Transport) Unread() ([]transport.Inbound, error) {
 		return nil, nil
 	}
 	rows, err := db.Query(`SELECT chat_jid, COALESCE(msg_id,''), COALESCE(sender,''), COALESCE(text,''), COALESCE(kind,''), COALESCE(file,''), ts
-		FROM zc_messages WHERE unread=1 AND from_me=0 ORDER BY ts ASC`)
+		FROM zc_messages WHERE unread=1 AND from_me=0 AND is_group=0 ORDER BY ts ASC`)
 	if err != nil {
 		return nil, err
 	}

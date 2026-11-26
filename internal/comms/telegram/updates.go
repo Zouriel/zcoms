@@ -83,6 +83,26 @@ type Message struct {
 	IsOutgoing bool     `json:"is_outgoing"`
 	SenderID   SenderID `json:"sender_id"`
 	Content    Content  `json:"content"`
+	ReplyTo    *ReplyTo `json:"reply_to,omitempty"`
+}
+
+// ReplyTo is a message's reply target. Type is "messageReplyToMessage" for a
+// reply to a message; ChatID may differ from the message's chat (a reply to
+// another chat's message) or be 0 in older TDLib builds.
+type ReplyTo struct {
+	Type      string `json:"@type"`
+	ChatID    int64  `json:"chat_id"`
+	MessageID int64  `json:"message_id"`
+}
+
+// TextEntity is one entity of a formattedText (offsets in UTF-16 units).
+type TextEntity struct {
+	Offset int `json:"offset"`
+	Length int `json:"length"`
+	Type   struct {
+		Type   string `json:"@type"`
+		UserID int64  `json:"user_id,omitempty"`
+	} `json:"type"`
 }
 
 type SenderID struct {
@@ -94,10 +114,12 @@ type SenderID struct {
 type Content struct {
 	Type string `json:"@type"`
 	Text struct {
-		Text string `json:"text"`
+		Text     string       `json:"text"`
+		Entities []TextEntity `json:"entities"`
 	} `json:"text"`
 	Caption struct {
-		Text string `json:"text"`
+		Text     string       `json:"text"`
+		Entities []TextEntity `json:"entities"`
 	} `json:"caption"`
 
 	Photo *struct {

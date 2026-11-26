@@ -19,6 +19,9 @@ import (
 type telegramTransport struct {
 	d *daemon
 
+	// ownMessage overrides the TDLib lookup of "did we send this message" (tests).
+	ownMessage func(chatID, messageID int64) bool
+
 	mu    sync.Mutex
 	state transport.ConnStatus
 }
@@ -35,7 +38,7 @@ func (t *telegramTransport) Name() string { return "telegram" }
 // Caps: Telegram is the reference transport — full receive, the synchronous
 // blocking-ask mode, and file send/receive.
 func (t *telegramTransport) Caps() transport.Caps {
-	return transport.Caps{Receive: true, BlockingAsk: true, Files: true}
+	return transport.Caps{Receive: true, BlockingAsk: true, Files: true, Groups: true}
 }
 
 func (t *telegramTransport) Status() transport.ConnStatus {
@@ -95,6 +98,7 @@ func (t *telegramTransport) Start(ctx context.Context, inbound chan<- transport.
 	if u, err := telegram.FetchCurrentUser(t.d.tdjson, t.d.clientID); err == nil {
 		t.d.mu.Lock()
 		t.d.me = u.ID
+		t.d.meUsername = u.Username
 		t.d.mu.Unlock()
 	}
 	t.setState(transport.StateConnected, "")
@@ -137,7 +141,16 @@ func (t *telegramTransport) dispatchUpdate(updateJSON string, inbound chan<- tra
 	}
 
 	u, ok := telegram.ParseUpdateNewMessage(updateJSON)
-	if !ok || u.Message.IsOutgoing {
+	if !ok {
+		return
+	}
+	// Groups and supergroups have negative chat ids. Only a call in a listen
+	// group gets through dispatchGroup; channels and plain messages stop there.
+	if u.Message.ChatID < 0 {
+		t.dispatchGroup(u.Message, inbound)
+		return
+	}
+	if u.Message.IsOutgoing {
 		return
 	}
 	if u.Message.SenderID.Type != "messageSenderUser" {

@@ -79,8 +79,10 @@ CREATE TABLE IF NOT EXISTS contacts (
 		}
 	}
 	// The old per-handle table is gone — addresses are explicit columns now.
-	_, err := s.db.Exec(`DROP TABLE IF EXISTS contact_handles`)
-	return err
+	if _, err := s.db.Exec(`DROP TABLE IF EXISTS contact_handles`); err != nil {
+		return err
+	}
+	return s.migrateGroups()
 }
 
 func now() string { return time.Now().UTC().Format(time.RFC3339) }

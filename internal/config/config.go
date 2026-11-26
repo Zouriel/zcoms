@@ -19,6 +19,10 @@ type Config struct {
 	Username    string `json:"username,omitempty"`
 	PhoneNumber string `json:"phone_number,omitempty"`
 
+	// Owner is the contact name of the person this install belongs to. Every
+	// group the daemon creates also gets the owner added (zc config owner).
+	Owner string `json:"owner,omitempty"`
+
 	// WhatsApp is the optional Baileys sidecar transport. It lives in comms
 	// config because WhatsApp is a transport, not an AI concern — the agent tier
 	// reaches it through comms like any other channel.
@@ -67,6 +71,16 @@ func LoadOrCreate() (Config, string, error) {
 	}
 
 	return finalConfiguration, configFilePath, nil
+}
+
+// Load reads config.json without creating or rewriting it. A missing file is
+// an empty Config.
+func Load() (Config, error) {
+	dir, err := DefaultAppDir()
+	if err != nil {
+		return Config{}, err
+	}
+	return loadConfigIfExists(filepath.Join(dir, "config.json"))
 }
 
 func Save(configuration Config, filePath string) error {
