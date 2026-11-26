@@ -79,6 +79,27 @@ func CreateForumTopicRequest(chatID int64, name string) map[string]any {
 	}
 }
 
+// EditForumTopicRequest is the editForumTopic request renaming a topic and
+// leaving its icon alone.
+func EditForumTopicRequest(chatID, topicID int64, name string) map[string]any {
+	return map[string]any{
+		"@type":                  "editForumTopic",
+		"chat_id":                chatID,
+		"forum_topic_id":         topicID,
+		"name":                   name,
+		"edit_icon_custom_emoji": false,
+		"icon_custom_emoji_id":   "0",
+	}
+}
+
+// RenameForumTopic renames a forum topic.
+func RenameForumTopic(tdjson *TDJSON, clientID int32, chatID, topicID int64, name string) error {
+	if _, err := request(tdjson, clientID, EditForumTopicRequest(chatID, topicID, name), "edit-topic", 30*time.Second); err != nil {
+		return topicErr(err)
+	}
+	return nil
+}
+
 // GetForumTopicsRequest is the getForumTopics request for the first page of
 // a forum's topics.
 func GetForumTopicsRequest(chatID int64, limit int) map[string]any {

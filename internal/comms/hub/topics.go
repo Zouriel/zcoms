@@ -78,6 +78,33 @@ func (d *daemon) topicOp(req client.Request, agent bool) (client.Response, error
 			return client.Response{Group: &grp}, err
 		}
 		return client.Response{Group: &grp, Topic: &client.Topic{ID: t.ID, Name: t.Name}}, nil
+	case "topic_rename":
+		// Owner only: the agent never renames threads.
+		if agent {
+			return client.Response{}, errors.New("only the owner can rename a thread")
+		}
+		name := strings.TrimSpace(req.Name)
+		if name == "" || strings.TrimSpace(req.Thread) == "" {
+			return client.Response{}, errors.New("topic_rename needs the thread (id or name) and a new name")
+		}
+		ts, err := tp.Topics(grp.NativeID)
+		if err != nil {
+			return client.Response{Group: &grp}, err
+		}
+		var hit *transport.Topic
+		for i, t := range ts {
+			if t.ID == req.Thread || strings.EqualFold(strings.TrimSpace(t.Name), strings.TrimSpace(req.Thread)) {
+				hit = &ts[i]
+				break
+			}
+		}
+		if hit == nil {
+			return client.Response{Group: &grp}, fmt.Errorf("no thread %q in %s", req.Thread, grp.Name)
+		}
+		if err := tp.RenameTopic(grp.NativeID, hit.ID, name); err != nil {
+			return client.Response{Group: &grp}, err
+		}
+		return client.Response{Group: &grp, Topic: &client.Topic{ID: hit.ID, Name: name}}, nil
 	case "topic_list":
 		ts, err := tp.Topics(grp.NativeID)
 		if err != nil {
@@ -132,6 +159,19 @@ func (t *telegramTransport) CreateTopic(group, name string) (transport.Topic, er
 		ft.Name = name
 	}
 	return transport.Topic{ID: strconv.FormatInt(ft.ID, 10), Name: ft.Name}, nil
+}
+
+// RenameTopic renames one of a group's forum topics.
+func (t *telegramTransport) RenameTopic(group, topicID, name string) error {
+	chatID, err := groupChatID(group)
+	if err != nil {
+		return err
+	}
+	id, err := strconv.ParseInt(topicID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("bad thread id %q", topicID)
+	}
+	return telegram.RenameForumTopic(t.d.tdjson, t.d.clientID, chatID, id, name)
 }
 
 // Topics lists a group's forum topics.

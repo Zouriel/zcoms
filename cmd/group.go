@@ -218,7 +218,25 @@ func groupCmd(transportName, label string) *cobra.Command {
 		},
 	}
 
-	root.AddCommand(create, add, list, members, view, topic, topicsCmd)
+	renameCmd := &cobra.Command{
+		Use:   "topic-rename <group> <thread id or name> <new name>",
+		Short: "Rename a group's thread (forum topic)",
+		Args:  cobra.MinimumNArgs(3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := daemon()
+			if err != nil {
+				return err
+			}
+			t, err := c.TopicRename(transportName, args[0], args[1], strings.Join(args[2:], " "))
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Renamed thread %s to %q\n", t.ID, t.Name)
+			return nil
+		},
+	}
+
+	root.AddCommand(create, add, list, members, view, topic, topicsCmd, renameCmd)
 	return root
 }
 

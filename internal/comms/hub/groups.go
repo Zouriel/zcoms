@@ -405,7 +405,7 @@ func (d *daemon) groupOp(req client.Request) (client.Response, error) {
 		grp, err := d.resolveGroupRef(tn, req.To)
 		return client.Response{Group: &grp}, err
 
-	case "topic_create", "topic_list":
+	case "topic_create", "topic_list", "topic_rename":
 		return d.topicOp(req, agent)
 	}
 	return client.Response{}, fmt.Errorf("unknown op: %s", req.Op)

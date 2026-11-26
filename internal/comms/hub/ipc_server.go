@@ -327,7 +327,7 @@ func (d *daemon) handleIPC(conn net.Conn) {
 
 	// --- group registry and group ops ---------------------------------------
 	case "group_create", "group_add", "group_list", "group_members", "group_read", "group_set", "group_get",
-		"topic_create", "topic_list":
+		"topic_create", "topic_list", "topic_rename":
 		d.handleGroupOp(conn, req)
 
 	// --- contacts directory (comms.db) ---------------------------------------

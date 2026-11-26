@@ -111,6 +111,12 @@ func (c *Client) TopicCreate(transport, group, name string) (*Topic, error) {
 	return resp.Topic, err
 }
 
+// TopicRename renames a group's thread (by id or current name). Owner only.
+func (c *Client) TopicRename(transport, group, thread, name string) (*Topic, error) {
+	resp, err := c.Do(Request{Op: "topic_rename", Transport: transport, To: group, Thread: thread, Name: name}, time.Now().Add(60*time.Second))
+	return resp.Topic, err
+}
+
 // TopicList lists a group's threads.
 func (c *Client) TopicList(transport, group string) ([]Topic, error) {
 	resp, err := c.Do(Request{Op: "topic_list", Transport: transport, To: group}, time.Now().Add(60*time.Second))

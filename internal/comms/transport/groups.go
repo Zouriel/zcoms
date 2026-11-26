@@ -110,6 +110,7 @@ type Topic struct {
 type Topicer interface {
 	CreateTopic(group, name string) (Topic, error)
 	Topics(group string) ([]Topic, error)
+	RenameTopic(group, topicID, name string) error
 	CreateForumGroup(name string, members []string) (GroupInfo, error)
 }
 
