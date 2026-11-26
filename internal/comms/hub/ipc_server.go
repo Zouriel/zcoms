@@ -117,6 +117,7 @@ func (d *daemon) handleIPC(conn net.Conn) {
 		writeIPC(conn, client.Response{
 			OK:        true,
 			MessageID: parseIntOrZero(ref.ID),
+			MsgRef:    ref.ID,
 			ChatID:    parseIntOrZero(ref.ChatID),
 			Address:   ref.ChatID,
 		})

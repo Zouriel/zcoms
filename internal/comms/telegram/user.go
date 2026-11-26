@@ -290,6 +290,9 @@ func CreatePrivateChat(tdjson *TDJSON, clientID int32, userID int64) (int64, err
 	return out.ID, nil
 }
 
+// SendTextMessage sends text to a chat and returns the message's final id:
+// it waits (bounded) for Telegram to confirm the send, since the id the
+// sendMessage reply carries is TDLib's temporary one and cannot be quoted.
 func SendTextMessage(tdjson *TDJSON, clientID int32, chatID int64, text string) (int64, error) {
 	formatted := FormatOutgoingText(tdjson, clientID, text)
 	req := map[string]any{
@@ -310,18 +313,5 @@ func SendTextMessage(tdjson *TDJSON, clientID int32, chatID int64, text string) 
 	if err != nil {
 		return 0, err
 	}
-
-	var out struct {
-		Type string `json:"@type"`
-		ID   int64  `json:"id"`
-	}
-	if err := json.Unmarshal([]byte(resp), &out); err != nil {
-		return 0, fmt.Errorf("failed to parse sendMessage response: %w; resp=%s", err, resp)
-	}
-
-	if out.Type != "message" || out.ID == 0 {
-		return 0, fmt.Errorf("sendMessage unexpected response: %s", resp)
-	}
-
-	return out.ID, nil
+	return confirmSent(tdjson, chatID, resp)
 }

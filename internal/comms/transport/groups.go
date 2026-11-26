@@ -27,6 +27,13 @@ type GroupPolicySetter interface {
 	SetGroupPolicy(p GroupPolicy)
 }
 
+// GroupStoreTrimmer is implemented by a transport that stores group messages
+// itself (WhatsApp). The hub calls it after the owner changes a group's flags
+// so stored rows shrink to what the new flags allow at once.
+type GroupStoreTrimmer interface {
+	TrimGroupStore(nativeID string, f GroupFlags) error
+}
+
 // GroupInfo identifies one group on a transport.
 type GroupInfo struct {
 	NativeID string

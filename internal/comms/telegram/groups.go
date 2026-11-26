@@ -93,10 +93,18 @@ func CreateSupergroup(tdjson *TDJSON, clientID int32, title string) (int64, erro
 
 // AddChatMembers adds users to a group. Users Telegram refused (usually their
 // privacy settings) are returned; the request itself succeeding means the rest
-// were added.
+// were added. addChatMembers only works for supergroups, so a basic group is
+// filled one user at a time with addChatMember.
 func AddChatMembers(tdjson *TDJSON, clientID int32, chatID int64, userIDs []int64) ([]int64, error) {
 	if len(userIDs) == 0 {
 		return nil, nil
+	}
+	c, err := fetchChatKind(tdjson, clientID, chatID)
+	if err != nil {
+		return nil, fmt.Errorf("reading chat %d: %w", chatID, err)
+	}
+	if c.Type.Type == "chatTypeBasicGroup" {
+		return addBasicGroupMembers(tdjson, clientID, chatID, userIDs)
 	}
 	resp, err := request(tdjson, clientID, map[string]any{
 		"@type":    "addChatMembers",
@@ -106,18 +114,58 @@ func AddChatMembers(tdjson *TDJSON, clientID int32, chatID int64, userIDs []int6
 	if err != nil {
 		return nil, err
 	}
-	// Recent TDLib answers failedToAddMembers; older builds answer ok.
+	return failedToAdd(resp), nil
+}
+
+// basicGroupForwardLimit is how many earlier messages a user added to a basic
+// group gets to see (Telegram's maximum).
+const basicGroupForwardLimit = 100
+
+// addBasicGroupMembers adds users to a basic group one by one. A user whose
+// add fails is reported as refused; the rest still get added. When every add
+// fails with an error the first error is returned instead, since that usually
+// means the account itself cannot add anyone.
+func addBasicGroupMembers(tdjson *TDJSON, clientID int32, chatID int64, userIDs []int64) ([]int64, error) {
+	var failed []int64
+	var firstErr error
+	for _, uid := range userIDs {
+		resp, err := request(tdjson, clientID, map[string]any{
+			"@type":         "addChatMember",
+			"chat_id":       chatID,
+			"user_id":       uid,
+			"forward_limit": basicGroupForwardLimit,
+		}, "add-chat-member", 30*time.Second)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			failed = append(failed, uid)
+			continue
+		}
+		failed = append(failed, failedToAdd(resp)...)
+	}
+	if firstErr != nil && len(failed) == len(userIDs) {
+		return nil, firstErr
+	}
+	return failed, nil
+}
+
+// failedToAdd reads the users an add refused. Recent TDLib answers
+// failedToAddMembers; older builds answer ok.
+func failedToAdd(resp string) []int64 {
 	var out struct {
 		Failed []struct {
 			UserID int64 `json:"user_id"`
 		} `json:"failed_to_add_members"`
 	}
-	_ = json.Unmarshal([]byte(resp), &out)
+	if json.Unmarshal([]byte(resp), &out) != nil {
+		return nil
+	}
 	failed := make([]int64, 0, len(out.Failed))
 	for _, f := range out.Failed {
 		failed = append(failed, f.UserID)
 	}
-	return failed, nil
+	return failed
 }
 
 // FetchGroupChats lists the basic groups and non-channel supergroups in the
@@ -355,7 +403,8 @@ type Mention struct {
 }
 
 // SendTextMessageWith sends text, quoting o.ReplyTo when set and tagging
-// o.Mentions.
+// o.Mentions. Like SendTextMessage it returns the message's final id once
+// Telegram confirms the send.
 func SendTextMessageWith(tdjson *TDJSON, clientID int32, chatID int64, text string, o SendOptions) (int64, error) {
 	formatted := FormatOutgoingText(tdjson, clientID, text)
 	formatted = withMentions(formatted, o.Mentions)
@@ -374,17 +423,7 @@ func SendTextMessageWith(tdjson *TDJSON, clientID int32, chatID int64, text stri
 	if err != nil {
 		return 0, err
 	}
-	var out struct {
-		Type string `json:"@type"`
-		ID   int64  `json:"id"`
-	}
-	if err := json.Unmarshal([]byte(resp), &out); err != nil {
-		return 0, fmt.Errorf("failed to parse sendMessage response: %w; resp=%s", err, resp)
-	}
-	if out.Type != "message" || out.ID == 0 {
-		return 0, fmt.Errorf("sendMessage unexpected response: %s", resp)
-	}
-	return out.ID, nil
+	return confirmSent(tdjson, chatID, resp)
 }
 
 // withMentions adds a textEntityTypeMentionName entity per mention, over the

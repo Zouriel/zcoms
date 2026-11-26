@@ -332,7 +332,17 @@ func (d *daemon) groupOp(req client.Request) (client.Response, error) {
 			return client.Response{}, err
 		}
 		grp, err = d.contacts.SetGroupFlags(contacts.Owner, tn, grp.NativeID, req.Listen, req.Follow)
-		return client.Response{Group: &grp}, err
+		if err != nil {
+			return client.Response{Group: &grp}, err
+		}
+		// Shrink stored history to what the new flags allow (spec 2c): off
+		// keeps nothing, listen-only the latest 200.
+		if tr, ok := d.registry[tn].(transport.GroupStoreTrimmer); ok {
+			if err := tr.TrimGroupStore(grp.NativeID, transport.GroupFlags{Name: grp.Name, Listen: grp.Listen, Follow: grp.Follow}); err != nil {
+				return client.Response{Group: &grp}, fmt.Errorf("flags saved but trimming stored messages failed: %w", err)
+			}
+		}
+		return client.Response{Group: &grp}, nil
 
 	case "group_get":
 		grp, err := d.resolveGroupRef(tn, req.To)
@@ -526,6 +536,10 @@ func (d *daemon) groupEvent(in transport.Inbound) client.Event {
 		SenderID:  in.SenderID,
 		ReplyToID: in.ReplyToID,
 		Call:      in.Call,
+		ReplyFile: in.ReplyFile,
+	}
+	if len(in.Files) > 0 {
+		ev.File = in.Files[0]
 	}
 	if in.From.Transport == "telegram" {
 		ev.ChatID = parseIntOrZero(in.From.ID)

@@ -119,14 +119,19 @@ type Address struct {
 // Send delivers a one-way message on Telegram; To is an @username or numeric
 // chat id. (Kept for the many existing callers; SendOn targets any transport.)
 func (c *Client) Send(to, text string) (Response, error) {
-	return c.Do(Request{Op: "send", To: to, Text: text}, time.Now().Add(30*time.Second))
+	return c.Do(Request{Op: "send", To: to, Text: text}, time.Now().Add(sendDeadline))
 }
+
+// sendDeadline bounds a send. The daemon waits (up to 15s per part) for
+// Telegram to confirm each part so it can return the final message id.
+const sendDeadline = 90 * time.Second
 
 // SendOn delivers a one-way message on the named transport ("telegram" |
 // "whatsapp"); to is that transport's native id. The reply path
-// for inbound messages uses this so an answer returns on the same app.
+// for inbound messages uses this so an answer returns on the same app. The
+// sent message's id is in Response.MsgRef.
 func (c *Client) SendOn(transport, to, text string) (Response, error) {
-	return c.Do(Request{Op: "send", Transport: transport, To: to, Text: text}, time.Now().Add(30*time.Second))
+	return c.Do(Request{Op: "send", Transport: transport, To: to, Text: text}, time.Now().Add(sendDeadline))
 }
 
 // SendAddr is SendOn with an Address value.

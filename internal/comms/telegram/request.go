@@ -37,6 +37,11 @@ type dispatcher struct {
 	mu      sync.Mutex
 	pending map[string]chan string
 
+	// Outgoing text sends waiting for TDLib to confirm them (guarded by mu).
+	// sendResults keeps outcomes that arrived before their waiter registered.
+	sendWaiters map[sendKey]chan sendResult
+	sendResults map[sendKey]sendResult
+
 	updates  chan string
 	stopCh   chan struct{}
 	stopOnce sync.Once
@@ -57,10 +62,12 @@ func dispatcherFor(tdjson *TDJSON) *dispatcher {
 	}
 
 	d := &dispatcher{
-		tdjson:  tdjson,
-		pending: map[string]chan string{},
-		updates: make(chan string, 1024),
-		stopCh:  make(chan struct{}),
+		tdjson:      tdjson,
+		pending:     map[string]chan string{},
+		sendWaiters: map[sendKey]chan sendResult{},
+		sendResults: map[sendKey]sendResult{},
+		updates:     make(chan string, 1024),
+		stopCh:      make(chan struct{}),
 	}
 	dispatchers[tdjson] = d
 	go d.receiveLoop()
@@ -123,6 +130,12 @@ func (d *dispatcher) receiveLoop() {
 					continue
 				}
 			}
+		}
+
+		// A send outcome also goes to whoever waits for that message's final
+		// id; it still flows on to the updates channel like any other update.
+		if key, res, ok := parseSendUpdate(raw); ok {
+			d.noteSendResult(key, res)
 		}
 
 		// Unsolicited update. Deliver to the updates channel; if no consumer is

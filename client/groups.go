@@ -5,9 +5,11 @@ import "time"
 // SendOpts sends a message on a transport, optionally quoting replyTo (a
 // message id in that conversation) and tagging mentions (member platform ids).
 // to may be a contact, a group name, a negative Telegram chat id, an
-// @groupusername or a WhatsApp @g.us JID.
+// @groupusername or a WhatsApp @g.us JID. The sent message's id comes back in
+// Response.MsgRef (the final Telegram id, not TDLib's temporary one), ready to
+// pass as replyTo later.
 func (c *Client) SendOpts(transport, to, text, replyTo string, mentions []string) (Response, error) {
-	return c.Do(Request{Op: "send", Transport: transport, To: to, Text: text, ReplyTo: replyTo, Mentions: mentions}, time.Now().Add(30*time.Second))
+	return c.Do(Request{Op: "send", Transport: transport, To: to, Text: text, ReplyTo: replyTo, Mentions: mentions}, time.Now().Add(sendDeadline))
 }
 
 // GroupCreate creates a group on a transport with the given members (names or

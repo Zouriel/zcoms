@@ -193,6 +193,11 @@ type Event struct {
 	SenderID  string `json:"sender_id,omitempty"`
 	ReplyToID string `json:"reply_to_id,omitempty"`
 	Call      string `json:"call,omitempty"`
+
+	// ReplyFile is the local path of the media in the message a call quotes
+	// (someone replies to a photo and @mentions the account). File holds the
+	// calling message's own media. Only calls download group media.
+	ReplyFile string `json:"reply_file,omitempty"`
 }
 
 // Contact is a person in the comms-owned contacts directory (comms.db). It is
@@ -261,6 +266,7 @@ type Connector struct {
 type Response struct {
 	OK         bool         `json:"ok"`
 	MessageID  int64        `json:"message_id,omitempty"`
+	MsgRef     string       `json:"msg_ref,omitempty"` // transport-native id of a sent message (any transport; quote it with reply_to)
 	ChatID     int64        `json:"chat_id,omitempty"`
 	Address    string       `json:"address,omitempty"` // transport-native id of the sent/resolved message
 	Reply      string       `json:"reply,omitempty"`

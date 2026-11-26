@@ -52,6 +52,9 @@ type Transport struct {
 	ctx     context.Context // the Start ctx, reused to re-arm the QR channel
 	db      *sql.DB         // the device-store DB; also holds our zc_messages history table
 	policy  transport.GroupPolicy
+
+	// download overrides the media fetch (tests).
+	download func(m *waE2E.Message) ([]byte, error)
 }
 
 // New returns a WhatsApp transport whose device session persists at dbPath
@@ -140,6 +143,12 @@ func (t *Transport) Start(ctx context.Context, inbound chan<- transport.Inbound)
 		t.setStatus(transport.StateError, err.Error())
 		return fmt.Errorf("whatsapp message store: %w", err)
 	}
+	// Stored group rows follow the registry: trim now (flags may have changed
+	// while the daemon was down) and hourly (follow rows age out in quiet groups).
+	if err := t.sweepGroupStore(); err != nil {
+		fmt.Printf("[whatsapp] trimming stored group messages: %v\n", err)
+	}
+	go t.sweepEvery(ctx, time.Hour)
 	device, err := container.GetFirstDevice(ctx)
 	if err != nil {
 		t.setStatus(transport.StateError, err.Error())

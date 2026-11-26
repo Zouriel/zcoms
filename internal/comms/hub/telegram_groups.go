@@ -60,10 +60,26 @@ func (t *telegramTransport) dispatchGroup(msg telegram.Message, inbound chan<- t
 		return
 	}
 
+	// A call's own media, and the media of the message it quotes, are the
+	// only group files ever downloaded.
+	var files []string
+	file, note := t.groupCallMedia(msg.ChatID, msg, false)
+	if file != "" {
+		files = []string{file}
+	}
+	var replyFile, replyNote string
+	if replyTo != "" && (msg.ReplyTo.ChatID == 0 || msg.ReplyTo.ChatID == msg.ChatID) {
+		if q, err := t.fetchMessageFor(msg.ChatID, msg.ReplyTo.MessageID); err == nil {
+			replyFile, replyNote = t.groupCallMedia(msg.ChatID, q, true)
+		}
+	}
+
 	in := transport.Inbound{
 		From:      transport.Address{Transport: "telegram", ID: chat},
 		Sender:    t.d.senderName(msg.SenderID.UserID),
-		Text:      replyText(msg.Content),
+		Text:      withNotes(replyText(msg.Content), note, replyNote),
+		Files:     files,
+		ReplyFile: replyFile,
 		Kind:      msg.Content.Type,
 		MessageID: strconv.FormatInt(msg.ID, 10),
 		At:        time.Unix(msg.Date, 0),
@@ -85,10 +101,7 @@ func (t *telegramTransport) isOwnMessage(chatID, messageID int64) bool {
 	if t.ownMessage != nil {
 		return t.ownMessage(chatID, messageID)
 	}
-	if t.d.tdjson == nil {
-		return false
-	}
-	m, err := telegram.FetchMessage(t.d.tdjson, t.d.clientID, chatID, messageID)
+	m, err := t.fetchMessageFor(chatID, messageID)
 	if err != nil {
 		return false
 	}

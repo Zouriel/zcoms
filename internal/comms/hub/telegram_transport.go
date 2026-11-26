@@ -21,6 +21,11 @@ type telegramTransport struct {
 
 	// ownMessage overrides the TDLib lookup of "did we send this message" (tests).
 	ownMessage func(chatID, messageID int64) bool
+	// fetchMessage and fetchFile override the TDLib message lookup and file
+	// download (tests). mediaRoot is where group call media is saved.
+	fetchMessage func(chatID, messageID int64) (telegram.Message, error)
+	fetchFile    func(f telegram.File) (string, error)
+	mediaRoot    string
 
 	mu    sync.Mutex
 	state transport.ConnStatus
@@ -28,8 +33,9 @@ type telegramTransport struct {
 
 func newTelegramTransport(d *daemon) *telegramTransport {
 	return &telegramTransport{
-		d:     d,
-		state: transport.ConnStatus{State: transport.StateConnecting, Since: time.Now()},
+		d:         d,
+		state:     transport.ConnStatus{State: transport.StateConnecting, Since: time.Now()},
+		mediaRoot: telegramGroupMediaRoot(),
 	}
 }
 

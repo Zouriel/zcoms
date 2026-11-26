@@ -21,6 +21,7 @@ var (
 	_ transport.Grouper           = (*Transport)(nil)
 	_ transport.RichSender        = (*Transport)(nil)
 	_ transport.GroupPolicySetter = (*Transport)(nil)
+	_ transport.GroupStoreTrimmer = (*Transport)(nil)
 )
 
 // Group storage limits (spec 2c).
@@ -129,7 +130,7 @@ func (t *Transport) onGroupMessage(e *events.Message) {
 		return
 	}
 
-	kind := messageKind(e.Message)
+	kind := groupKind(e.Message)
 	text := messageText(e.Message)
 	storeText := text
 	if storeText == "" && kind != "messageText" {
@@ -151,11 +152,21 @@ func (t *Transport) onGroupMessage(e *events.Message) {
 	if call == "" {
 		return
 	}
+	// A call's own media, and the media of the message it quotes, are the
+	// only group files ever downloaded.
+	var files []string
+	file, note := t.groupCallMedia(chat, info.ID, e.Message, false)
+	if file != "" {
+		files = []string{file}
+	}
+	replyFile, replyNote := t.groupCallMedia(chat, ci.GetStanzaID(), ci.GetQuotedMessage(), true)
 	in := transport.Inbound{
 		From:      transport.Address{Transport: "whatsapp", ID: chat},
 		Sender:    name,
-		Text:      storeText,
+		Text:      withNotes(storeText, note, replyNote),
 		Kind:      kind,
+		Files:     files,
+		ReplyFile: replyFile,
 		MessageID: info.ID,
 		At:        info.Timestamp,
 		Group:     true,
@@ -189,14 +200,88 @@ func (t *Transport) storeGroupMessage(chat, msgID, sender, senderJID string, fro
 	_, _ = db.Exec(`INSERT OR IGNORE INTO zc_messages(chat_jid, msg_id, sender, from_me, text, kind, ts, unread, is_group, sender_jid, reply_to)
 		VALUES(?,?,?,?,?,?,?,0,1,?,?)`,
 		chat, msgID, sender, fm, text, kind, ts.Unix(), nullStr(senderJID), nullStr(replyTo))
-	if follow {
-		_, _ = db.Exec(`DELETE FROM zc_messages WHERE chat_jid=? AND is_group=1 AND ts < ?`,
+	_ = trimGroupRows(db, chat, transport.GroupFlags{Listen: !follow, Follow: follow})
+}
+
+// trimGroupRows cuts a group's stored rows down to what its flags allow:
+// nothing for an off group, 30 days for a follow group, the latest 200 for a
+// listen-only group.
+func trimGroupRows(db *sql.DB, chat string, f transport.GroupFlags) error {
+	switch {
+	case f.Follow:
+		_, err := db.Exec(`DELETE FROM zc_messages WHERE chat_jid=? AND is_group=1 AND ts < ?`,
 			chat, time.Now().Add(-followRetention).Unix())
-		return
+		return err
+	case f.Listen:
+		_, err := db.Exec(`DELETE FROM zc_messages WHERE chat_jid=? AND is_group=1 AND id NOT IN (
+			SELECT id FROM zc_messages WHERE chat_jid=? AND is_group=1 ORDER BY ts DESC, id DESC LIMIT ?)`,
+			chat, chat, listenKeep)
+		return err
 	}
-	_, _ = db.Exec(`DELETE FROM zc_messages WHERE chat_jid=? AND is_group=1 AND id NOT IN (
-		SELECT id FROM zc_messages WHERE chat_jid=? AND is_group=1 ORDER BY ts DESC, id DESC LIMIT ?)`,
-		chat, chat, listenKeep)
+	_, err := db.Exec(`DELETE FROM zc_messages WHERE chat_jid=? AND is_group=1`, chat)
+	return err
+}
+
+// TrimGroupStore applies a group's new flags to its stored rows at once, so
+// clearing listen or follow does not leave history behind.
+func (t *Transport) TrimGroupStore(chat string, f transport.GroupFlags) error {
+	t.mu.Lock()
+	db := t.db
+	t.mu.Unlock()
+	if db == nil {
+		return nil // nothing stored while the store is closed
+	}
+	return trimGroupRows(db, chat, f)
+}
+
+// sweepGroupStore applies the registry's current flags to every group that
+// has stored rows. It catches flags changed while the daemon was down and
+// follow rows aging past 30 days in a quiet group.
+func (t *Transport) sweepGroupStore() error {
+	t.mu.Lock()
+	db := t.db
+	t.mu.Unlock()
+	if db == nil {
+		return nil
+	}
+	rows, err := db.Query(`SELECT DISTINCT chat_jid FROM zc_messages WHERE is_group=1`)
+	if err != nil {
+		return err
+	}
+	var chats []string
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			rows.Close()
+			return err
+		}
+		chats = append(chats, c)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, c := range chats {
+		if err := trimGroupRows(db, c, t.groupFlags(c)); err != nil {
+			return fmt.Errorf("trimming %s: %w", c, err)
+		}
+	}
+	return nil
+}
+
+// sweepEvery runs sweepGroupStore until ctx ends. Start launches it and its
+// ctx stops it.
+func (t *Transport) sweepEvery(ctx context.Context, every time.Duration) {
+	tick := time.NewTicker(every)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			_ = t.sweepGroupStore()
+		}
+	}
 }
 
 // storeOwnGroupSend records our own outbound to a group, as the registry says.

@@ -143,4 +143,7 @@ type Inbound struct {
 	SenderID  string
 	ReplyToID string
 	Call      string
+	// ReplyFile is the local path of the quoted message's media on a group
+	// call; Files holds the calling message's own media.
+	ReplyFile string
 }

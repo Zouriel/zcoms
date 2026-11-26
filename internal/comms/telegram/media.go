@@ -11,9 +11,10 @@ import (
 
 // File mirrors the TDLib "file" object (only the fields we use).
 type File struct {
-	ID    int32 `json:"id"`
-	Size  int64 `json:"size"`
-	Local struct {
+	ID           int32 `json:"id"`
+	Size         int64 `json:"size"`
+	ExpectedSize int64 `json:"expected_size"`
+	Local        struct {
 		Path                   string `json:"path"`
 		IsDownloadingCompleted bool   `json:"is_downloading_completed"`
 	} `json:"local"`
