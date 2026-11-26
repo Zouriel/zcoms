@@ -141,6 +141,9 @@ type Inbound struct {
 	Group     bool
 	GroupName string
 	SenderID  string
+	// SenderAlt is the sender's other address when the platform has two
+	// (WhatsApp: the phone JID of a LID sender, or the reverse).
+	SenderAlt string
 	ReplyToID string
 	Call      string
 	// ReplyFile is the local path of the quoted message's media on a group

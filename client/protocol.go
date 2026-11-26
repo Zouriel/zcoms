@@ -110,6 +110,8 @@ type GroupMember struct {
 	Name     string `json:"name"`
 	Username string `json:"username,omitempty"`
 	IsSelf   bool   `json:"is_self,omitempty"`
+	// IsOwner marks the member who is config.json's owner on this transport.
+	IsOwner bool `json:"is_owner,omitempty"`
 }
 
 // GroupMessage is one message returned by group_read, in time order.
@@ -210,6 +212,12 @@ type Event struct {
 	// (someone replies to a photo and @mentions the account). File holds the
 	// calling message's own media. Only calls download group media.
 	ReplyFile string `json:"reply_file,omitempty"`
+
+	// SenderIsOwner is set by the daemon on a group call whose sender is
+	// config.json's owner on this transport (resolved through contacts), so
+	// the agent tier can give the owner their fixed role without trusting
+	// anything in the message.
+	SenderIsOwner bool `json:"sender_is_owner,omitempty"`
 }
 
 // Contact is a person in the comms-owned contacts directory (comms.db). It is

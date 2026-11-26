@@ -54,6 +54,9 @@ type daemon struct {
 	// so a create that also arrives as a platform join event is announced once.
 	joinMu   sync.Mutex
 	joinSeen map[string]time.Time
+
+	// ownerLookup overrides resolving config.json's owner (tests).
+	ownerLookup func(transportName string) (string, error)
 }
 
 func (d *daemon) logf(format string, a ...any) { fmt.Printf("[comms] "+format+"\n", a...) }

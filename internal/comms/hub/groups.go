@@ -248,6 +248,61 @@ func (d *daemon) ownerAddress(transportName string) (string, error) {
 	return addr, nil
 }
 
+// isOwner reports whether any of a member's addresses is config.json's owner
+// on the transport. Unresolvable owner: nobody is the owner.
+func (d *daemon) isOwner(transportName string, ids ...string) bool {
+	return ownerIn(d.ownerOf(transportName), ids...)
+}
+
+// ownerOf resolves config.json's owner to a native address, "" when unset or
+// unresolvable.
+func (d *daemon) ownerOf(transportName string) string {
+	var addr string
+	var err error
+	switch {
+	case d.ownerLookup != nil:
+		addr, err = d.ownerLookup(transportName)
+	case transportName == "telegram" && d.tdjson == nil:
+		return "" // no session to resolve a contact's handle with
+	default:
+		addr, err = d.ownerAddress(transportName)
+	}
+	if err != nil {
+		return ""
+	}
+	return addr
+}
+
+// ownerIn reports whether one of ids is the owner's address.
+func ownerIn(addr string, ids ...string) bool {
+	if addr == "" {
+		return false
+	}
+	for _, id := range ids {
+		if id != "" && sameAddress(addr, id) {
+			return true
+		}
+	}
+	return false
+}
+
+// sameAddress compares two native user addresses, ignoring a WhatsApp
+// device suffix ("960…:12@s.whatsapp.net" is "960…@s.whatsapp.net").
+func sameAddress(a, b string) bool {
+	norm := func(s string) string {
+		s = strings.TrimSpace(s)
+		user, server, ok := strings.Cut(s, "@")
+		if !ok {
+			return s
+		}
+		if u, _, ok := strings.Cut(user, ":"); ok {
+			user = u
+		}
+		return user + "@" + server
+	}
+	return norm(a) == norm(b)
+}
+
 func (d *daemon) isSelfAddress(transportName, addr string) bool {
 	if transportName != "telegram" {
 		return false
@@ -315,8 +370,10 @@ func (d *daemon) groupOp(req client.Request) (client.Response, error) {
 			return client.Response{}, err
 		}
 		out := make([]client.GroupMember, 0, len(ms))
+		owner := d.ownerOf(tn)
 		for _, m := range ms {
-			out = append(out, client.GroupMember{ID: m.ID, Name: m.Name, Username: m.Username, IsSelf: m.IsSelf})
+			out = append(out, client.GroupMember{ID: m.ID, Name: m.Name, Username: m.Username, IsSelf: m.IsSelf,
+				IsOwner: !m.IsSelf && ownerIn(owner, m.ID, m.Alt)})
 		}
 		return client.Response{Group: &grp, Members: out}, nil
 
@@ -541,6 +598,7 @@ func (d *daemon) groupEvent(in transport.Inbound) client.Event {
 		Call:      in.Call,
 		ReplyFile: in.ReplyFile,
 	}
+	ev.SenderIsOwner = d.isOwner(in.From.Transport, in.SenderID, in.SenderAlt)
 	if len(in.Files) > 0 {
 		ev.File = in.Files[0]
 	}

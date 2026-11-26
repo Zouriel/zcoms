@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -83,5 +84,37 @@ func TestGroupJoinedRegistersAndEmitsOnce(t *testing.T) {
 	ev = <-ch
 	if ev.GroupName != "Acme build" {
 		t.Fatalf("nameless join renamed the group: %+v", ev)
+	}
+}
+
+func TestGroupCallMarksTheOwner(t *testing.T) {
+	d, g := groupDaemon(t, true, false)
+	d.ownerLookup = func(tn string) (string, error) {
+		if tn == "whatsapp" {
+			return "9607819157@s.whatsapp.net", nil
+		}
+		return "5550001", nil
+	}
+	call := func(tn, sender, alt string) client.Event {
+		return d.groupEvent(transport.Inbound{
+			From: transport.Address{Transport: tn, ID: g.NativeID}, MessageID: "1", At: time.Now(),
+			Group: true, SenderID: sender, SenderAlt: alt, Call: transport.CallMention,
+		})
+	}
+	if !call("telegram", "5550001", "").SenderIsOwner {
+		t.Fatal("owner's telegram call not marked")
+	}
+	if call("telegram", "5550002", "").SenderIsOwner {
+		t.Fatal("another member marked as the owner")
+	}
+	if !call("whatsapp", "123456789@lid", "9607819157:3@s.whatsapp.net").SenderIsOwner {
+		t.Fatal("owner calling from a LID not matched by the phone alt")
+	}
+	if call("whatsapp", "123456789@lid", "9607000001@s.whatsapp.net").SenderIsOwner {
+		t.Fatal("another whatsapp member marked as the owner")
+	}
+	d.ownerLookup = func(string) (string, error) { return "", errors.New("owner not set") }
+	if call("telegram", "5550001", "").SenderIsOwner {
+		t.Fatal("marked an owner with no owner configured")
 	}
 }

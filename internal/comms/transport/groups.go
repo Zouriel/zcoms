@@ -47,6 +47,7 @@ type GroupMember struct {
 	Name     string
 	Username string
 	IsSelf   bool
+	Alt      string // the member's other address (WhatsApp phone JID of a LID member)
 }
 
 // GroupMessage is one message of a group window, returned oldest-first.

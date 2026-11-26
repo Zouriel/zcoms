@@ -80,6 +80,14 @@ func (t *Transport) isSelf(jid string) bool {
 	return false
 }
 
+// altOf renders a sender's alternative address, "" when there is none.
+func altOf(j types.JID) string {
+	if j.IsEmpty() {
+		return ""
+	}
+	return j.ToNonAD().String()
+}
+
 // onGroupInfo emits a join notice when a group change lists this account
 // among the members who joined or were added.
 func (t *Transport) onGroupInfo(e *events.GroupInfo) {
@@ -206,6 +214,7 @@ func (t *Transport) onGroupMessage(e *events.Message) {
 		Group:     true,
 		GroupName: flags.Name,
 		SenderID:  sender,
+		SenderAlt: altOf(info.SenderAlt),
 		ReplyToID: ci.GetStanzaID(),
 		Call:      call,
 	}
@@ -456,6 +465,9 @@ func (t *Transport) GroupMembers(group string) ([]transport.GroupMember, error) 
 	out := make([]transport.GroupMember, 0, len(info.Participants))
 	for _, p := range info.Participants {
 		m := transport.GroupMember{ID: p.JID.String(), IsSelf: t.isSelf(p.JID.String())}
+		if !p.PhoneNumber.IsEmpty() && p.PhoneNumber.String() != m.ID {
+			m.Alt = p.PhoneNumber.ToNonAD().String()
+		}
 		if !p.PhoneNumber.IsEmpty() && t.isSelf(p.PhoneNumber.String()) {
 			m.IsSelf = true
 		}
