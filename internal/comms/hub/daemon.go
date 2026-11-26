@@ -19,7 +19,6 @@ import (
 
 	"github.com/Zouriel/zcoms/client"
 	"github.com/Zouriel/zcoms/internal/comms/contacts"
-	"github.com/Zouriel/zcoms/internal/comms/instagram"
 	"github.com/Zouriel/zcoms/internal/comms/telegram"
 	"github.com/Zouriel/zcoms/internal/comms/transport"
 	"github.com/Zouriel/zcoms/internal/comms/whatsapp"
@@ -78,20 +77,16 @@ func RunDaemon(tdjson *telegram.TDJSON, clientID int32, store *contacts.Store) e
 		subscribers: map[string][]chan client.Event{},
 	}
 
-	// Telegram is the in-process reference transport. WhatsApp/Instagram register
-	// here too once their connectors land (Phases B/C); the rest of the daemon is
-	// already transport-agnostic.
+	// Telegram is the in-process reference transport; WhatsApp registers beside
+	// it. The rest of the daemon is transport-agnostic.
 	d.registry["telegram"] = newTelegramTransport(d)
 
 	// WhatsApp (whatsmeow, in-process). Inert until paired: it sits in
 	// action_required/needs_qr and surfaces the QR on the connectors page.
 	if dir, err := client.DefaultAppDir(); err == nil {
 		d.registry["whatsapp"] = whatsapp.New(filepath.Join(dir, "whatsmeow.db"))
-		// Instagram (Python sidecar over HTTP). Inert until instagram.json is
-		// seeded; then it restores/logs in and polls DMs on an interval.
-		d.registry["instagram"] = instagram.New(dir)
 	} else {
-		d.logf("whatsapp/instagram transports disabled: %v", err)
+		d.logf("whatsapp transport disabled: %v", err)
 	}
 
 	if err := d.serveIPC(); err != nil {
@@ -364,41 +359,6 @@ func (d *daemon) resolveWhatsApp(to string) (string, error) {
 	}
 
 	return whatsapp.JID(addr), nil
-}
-
-// resolveInstagram turns a thread id, an "@handle", or a contact's name into an
-// address the Instagram transport understands.
-//
-// Like Telegram and unlike WhatsApp, a bare word may genuinely be a public
-// handle, so a name that is not in the directory is passed through rather than
-// refused.
-func (d *daemon) resolveInstagram(to string) (string, error) {
-	to = strings.TrimSpace(to)
-	if to == "" || strings.HasPrefix(to, "@") {
-		return to, nil
-	}
-
-	// A numeric id is a thread that already exists.
-	if _, err := strconv.ParseInt(to, 10, 64); err == nil {
-		return to, nil
-	}
-
-	c, ok, err := d.contactFor(to)
-	if err != nil {
-		return "", err
-	}
-	if !ok {
-		return to, nil
-	}
-
-	// Instagram has no phone fallback, so an empty address means there is nothing
-	// to try, and saying which contact beats a handle lookup failing on a name.
-	addr := strings.TrimSpace(c.Address("instagram"))
-	if addr == "" {
-		return "", fmt.Errorf("%s has no Instagram handle in your contacts", c.Name)
-	}
-
-	return addr, nil
 }
 
 // contactFor resolves a name against the contacts directory.

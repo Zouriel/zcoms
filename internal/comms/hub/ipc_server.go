@@ -315,8 +315,6 @@ func (d *daemon) recipient(transportName, to string) (string, error) {
 	switch transportName {
 	case "whatsapp":
 		return d.resolveWhatsApp(to)
-	case "instagram":
-		return d.resolveInstagram(to)
 	default:
 		return to, nil
 	}

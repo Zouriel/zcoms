@@ -110,7 +110,7 @@ func (c *Client) Do(req Request, readDeadline time.Time) (Response, error) {
 
 // Address identifies a conversation on a specific transport (mirrors
 // transport.Address). ID is the transport-native id: a Telegram @username or
-// chat id, a WhatsApp JID, an Instagram thread/user id.
+// chat id, or a WhatsApp JID.
 type Address struct {
 	Transport string `json:"transport"`
 	ID        string `json:"id"`
@@ -123,7 +123,7 @@ func (c *Client) Send(to, text string) (Response, error) {
 }
 
 // SendOn delivers a one-way message on the named transport ("telegram" |
-// "whatsapp" | "instagram"); to is that transport's native id. The reply path
+// "whatsapp"); to is that transport's native id. The reply path
 // for inbound messages uses this so an answer returns on the same app.
 func (c *Client) SendOn(transport, to, text string) (Response, error) {
 	return c.Do(Request{Op: "send", Transport: transport, To: to, Text: text}, time.Now().Add(30*time.Second))
@@ -140,7 +140,7 @@ func (c *Client) SendFileOn(transport, to, path, caption string) (Response, erro
 }
 
 // Connectors returns the live status of every transport the daemon knows
-// (Telegram/WhatsApp/Instagram and any reserved slots) for the connectors page.
+// (Telegram and WhatsApp) for the connectors page.
 func (c *Client) Connectors() ([]Connector, error) {
 	resp, err := c.Do(Request{Op: "connectors"}, time.Now().Add(10*time.Second))
 	return resp.Connectors, err

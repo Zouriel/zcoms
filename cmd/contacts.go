@@ -32,7 +32,6 @@ func channelFlags(c *cobra.Command, t *client.Contact) {
 	c.Flags().StringVar(&t.Email, "email", "", "Email address")
 	c.Flags().StringVar(&t.Telegram, "telegram", "", "Telegram @handle (falls back to --phone)")
 	c.Flags().StringVar(&t.WhatsApp, "whatsapp", "", "WhatsApp id/number (falls back to --phone)")
-	c.Flags().StringVar(&t.Instagram, "instagram", "", "Instagram @handle (no phone fallback; future)")
 	c.Flags().StringVar(&t.Discord, "discord", "", "Discord id (no phone fallback; future)")
 	c.Flags().StringVar(&t.Viber, "viber", "", "Viber id (falls back to --phone; future)")
 	c.Flags().StringVar(&t.Github, "github", "", "GitHub handle (contact info)")
@@ -77,7 +76,6 @@ func init() {
 					{"email", c.Email},
 					{"telegram", c.Telegram},
 					{"whatsapp", c.WhatsApp},
-					{"instagram", c.Instagram},
 					{"discord", c.Discord},
 					{"viber", c.Viber},
 					{"github", c.Github},
@@ -140,8 +138,8 @@ func init() {
 			// patch over the existing row (the store does a full overwrite).
 			for name, dst := range map[string]*string{
 				"phone": &cur.Phone, "email": &cur.Email, "telegram": &cur.Telegram,
-				"whatsapp": &cur.WhatsApp, "instagram": &cur.Instagram,
-				"discord": &cur.Discord, "viber": &cur.Viber, "github": &cur.Github, "note": &cur.Note,
+				"whatsapp": &cur.WhatsApp,
+				"discord":  &cur.Discord, "viber": &cur.Viber, "github": &cur.Github, "note": &cur.Note,
 			} {
 				if cmd.Flags().Changed(name) {
 					v, _ := cmd.Flags().GetString(name)

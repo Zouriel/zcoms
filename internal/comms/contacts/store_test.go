@@ -2,6 +2,7 @@ package contacts
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Zouriel/zcoms/client"
@@ -17,23 +18,19 @@ func openTmp(t *testing.T) *Store {
 	return s
 }
 
-func TestAliasesAndInstagram(t *testing.T) {
+func TestAliasesAndGithub(t *testing.T) {
 	s := openTmp(t)
 
 	c, err := s.Create(Owner, client.Contact{
-		Name:      "Ali",
-		Aliases:   []string{"Aliyya", "  Ali bro ", "aliyya"}, // dup (case) + whitespace
-		Instagram: "ali_g",
-		Github:    "@ali-gh", // leading @ is stripped (github handles have no @)
+		Name:    "Ali",
+		Aliases: []string{"Aliyya", "  Ali bro ", "aliyya"}, // dup (case) + whitespace
+		Github:  "@ali-gh",                                  // leading @ is stripped (github handles have no @)
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	if len(c.Aliases) != 2 {
 		t.Fatalf("aliases not de-duped/trimmed: %#v", c.Aliases)
-	}
-	if c.Instagram != "@ali_g" {
-		t.Fatalf("instagram not @-normalized: %q", c.Instagram)
 	}
 	if c.Github != "ali-gh" {
 		t.Fatalf("github not @-stripped: %q", c.Github)
@@ -94,5 +91,31 @@ func TestUniqueNamesAndAliases(t *testing.T) {
 	bob.Phone = "+1"
 	if err := s.Update(Owner, bob); err != nil {
 		t.Fatalf("self-update rejected: %v", err)
+	}
+}
+
+// A live comms.db keeps columns for channels that were removed (instagram,
+// discord, viber). They are never read, and a contact that has one still
+// resolves on the channels that remain.
+func TestLegacyChannelColumnsAreIgnored(t *testing.T) {
+	s := openTmp(t)
+	for _, col := range []string{"instagram", "discord", "viber"} {
+		if _, err := s.db.Exec(`ALTER TABLE contacts ADD COLUMN ` + col + ` TEXT`); err != nil &&
+			!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+			t.Fatalf("add %s: %v", col, err)
+		}
+	}
+	if _, err := s.db.Exec(`INSERT INTO contacts(name, phone, instagram, discord, viber) VALUES('Raani', '+9609752353', '@r', 'd1', 'v1')`); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	got, err := s.Resolve("Raani")
+	if err != nil || len(got) != 1 {
+		t.Fatalf("resolve: %v %v", got, err)
+	}
+	if a := got[0].Address("whatsapp"); a != "+9609752353" {
+		t.Fatalf("whatsapp address %q, want the phone", a)
+	}
+	if a := got[0].Address("instagram"); a != "" {
+		t.Fatalf("instagram address %q, want none", a)
 	}
 }

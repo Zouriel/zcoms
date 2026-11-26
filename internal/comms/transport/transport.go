@@ -1,7 +1,6 @@
 // Package transport is the comms foundation's multi-transport abstraction. Every
 // messaging channel the daemon speaks — Telegram (in-process TDLib), WhatsApp
-// (in-process whatsmeow), Instagram (Python sidecar over HTTP), and any future
-// connector — implements Transport. The hub keeps them in a registry keyed by
+// (in-process whatsmeow), and any future connector — implements Transport. The hub keeps them in a registry keyed by
 // Name() and routes sends by Address.Transport; inbound messages from every
 // transport (push or poll) fan into one channel the hub broadcasts to
 // subscribers. This is what lets auto-reply, triage, and the connectors page
@@ -13,12 +12,11 @@ import (
 	"time"
 )
 
-// Transport is one connected messaging account/channel. Implementations are
-// either in-process (Telegram, WhatsApp) or thin clients over a sidecar
-// (Instagram). Caps advertises what the transport can do so callers can gate
+// Transport is one connected messaging account/channel. Both implementations
+// (Telegram, WhatsApp) run in-process. Caps advertises what the transport can do so callers can gate
 // behaviour (e.g. blocking ask only where BlockingAsk).
 type Transport interface {
-	Name() string // "telegram" | "whatsapp" | "instagram"
+	Name() string // "telegram" | "whatsapp"
 	Caps() Caps
 	Status() ConnStatus
 	Send(to Address, text string) (MsgRef, error)
@@ -33,7 +31,7 @@ type Transport interface {
 
 // Caps describes what a transport supports. BlockingAsk is the synchronous
 // "send a question and wait for the reply on the same connection" mode that only
-// Telegram offers; WhatsApp/Instagram get the async reply path instead.
+// Telegram offers; WhatsApp gets the async reply path instead.
 type Caps struct {
 	Receive     bool `json:"receive"`
 	BlockingAsk bool `json:"blocking_ask"`
@@ -70,8 +68,7 @@ const (
 )
 
 // Address identifies a conversation on a specific transport. ID is the
-// transport-native id as a string: a Telegram chat id, a WhatsApp JID, an
-// Instagram thread/user id. Sends route on Transport; replies go back on the
+// transport-native id as a string: a Telegram chat id or a WhatsApp JID. Sends route on Transport; replies go back on the
 // same Address the inbound arrived from.
 type Address struct {
 	Transport string `json:"transport"`
