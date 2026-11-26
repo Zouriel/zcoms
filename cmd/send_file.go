@@ -12,6 +12,7 @@ import (
 )
 
 func init() {
+	var thread string
 	sendFileCommand := &cobra.Command{
 		Use:   "send-file <@username|chat_id> <path> [caption]",
 		Short: "Send a file (photo/video/audio/document) to a chat",
@@ -22,12 +23,15 @@ func init() {
 			caption := strings.Join(args[2:], " ")
 
 			// Route through the daemon if it's running (it owns the session).
-			if handled, label, chatID, err := daemonSendFile(target, path, caption); handled {
+			if handled, label, chatID, err := daemonSendFile(target, path, caption, thread); handled {
 				if err != nil {
 					return err
 				}
 				fmt.Printf("Sent %s ✅ (chat_id=%d)\n", label, chatID)
 				return nil
+			}
+			if thread != "" {
+				return errThreadNeedsDaemon
 			}
 
 			apiID, apiHash, err := resolveTelegramCredentials()
@@ -65,6 +69,7 @@ func init() {
 		},
 	}
 
+	sendFileCommand.Flags().StringVar(&thread, "thread", "", "Post in this group thread (topic id or name)")
 	tgCmd.AddCommand(sendFileCommand)
 }
 

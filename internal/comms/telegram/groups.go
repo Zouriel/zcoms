@@ -64,20 +64,12 @@ func request(tdjson *TDJSON, clientID int32, req map[string]any, tag string, tim
 	return SendRequestAndWait(tdjson, clientID, string(b), tag, timeout)
 }
 
-// CreateSupergroup creates a (non-channel, non-forum) supergroup and returns
-// its chat id. A supergroup keeps one chat id for life, whereas a basic group
+// CreateSupergroup creates a non-channel supergroup and returns its chat id;
+// forum makes it a forum (topics on) from the start. A supergroup keeps one chat id for life, whereas a basic group
 // is migrated to a supergroup (and changes id) on several ordinary admin
 // actions, which would orphan the registry row.
-func CreateSupergroup(tdjson *TDJSON, clientID int32, title string) (int64, error) {
-	resp, err := request(tdjson, clientID, map[string]any{
-		"@type":                    "createNewSupergroupChat",
-		"title":                    title,
-		"is_forum":                 false,
-		"is_channel":               false,
-		"description":              "",
-		"message_auto_delete_time": 0,
-		"for_import":               false,
-	}, "create-supergroup", 30*time.Second)
+func CreateSupergroup(tdjson *TDJSON, clientID int32, title string, forum bool) (int64, error) {
+	resp, err := request(tdjson, clientID, CreateSupergroupRequest(title, forum), "create-supergroup", 30*time.Second)
 	if err != nil {
 		return 0, err
 	}
@@ -89,6 +81,19 @@ func CreateSupergroup(tdjson *TDJSON, clientID int32, title string) (int64, erro
 		return 0, fmt.Errorf("createNewSupergroupChat unexpected response: %s", resp)
 	}
 	return c.ID, nil
+}
+
+// CreateSupergroupRequest is the createNewSupergroupChat request.
+func CreateSupergroupRequest(title string, forum bool) map[string]any {
+	return map[string]any{
+		"@type":                    "createNewSupergroupChat",
+		"title":                    title,
+		"is_forum":                 forum,
+		"is_channel":               false,
+		"description":              "",
+		"message_auto_delete_time": 0,
+		"for_import":               false,
+	}
 }
 
 // AddChatMembers adds users to a group. Users Telegram refused (usually their
@@ -391,6 +396,8 @@ func FetchNewer(tdjson *TDJSON, clientID int32, chatID, fromMessageID int64, lim
 type SendOptions struct {
 	ReplyTo  int64
 	Mentions []Mention
+	// Thread is the forum topic to post in (0 = the chat itself).
+	Thread int64
 }
 
 // Mention tags a user in an outgoing message. Name is how they are shown;
@@ -407,7 +414,16 @@ type Mention struct {
 // Telegram confirms the send.
 func SendTextMessageWith(tdjson *TDJSON, clientID int32, chatID int64, text string, o SendOptions) (int64, error) {
 	formatted := FormatOutgoingText(tdjson, clientID, text)
-	formatted = withMentions(formatted, o.Mentions)
+	resp, err := request(tdjson, clientID, sendTextRequest(chatID, withMentions(formatted, o.Mentions), o), "send-msg-with", 15*time.Second)
+	if err != nil {
+		return 0, err
+	}
+	return confirmSent(tdjson, chatID, resp)
+}
+
+// sendTextRequest builds the sendMessage request for formatted text with a
+// quote and a forum topic.
+func sendTextRequest(chatID int64, formatted FormattedText, o SendOptions) map[string]any {
 	req := map[string]any{
 		"@type":   "sendMessage",
 		"chat_id": chatID,
@@ -419,11 +435,10 @@ func SendTextMessageWith(tdjson *TDJSON, clientID int32, chatID int64, text stri
 	if o.ReplyTo != 0 {
 		req["reply_to"] = map[string]any{"@type": "inputMessageReplyToMessage", "message_id": o.ReplyTo}
 	}
-	resp, err := request(tdjson, clientID, req, "send-msg-with", 15*time.Second)
-	if err != nil {
-		return 0, err
+	if o.Thread != 0 {
+		req["topic_id"] = topicField(o.Thread)
 	}
-	return confirmSent(tdjson, chatID, resp)
+	return req
 }
 
 // withMentions adds a textEntityTypeMentionName entity per mention, over the

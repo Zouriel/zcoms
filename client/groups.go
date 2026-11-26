@@ -72,3 +72,47 @@ func (c *Client) GroupGet(transport, group string) (*Group, error) {
 	resp, err := c.Do(Request{Op: "group_get", Transport: transport, To: group}, time.Now().Add(60*time.Second))
 	return resp.Group, err
 }
+
+// SendOptions are the extras of a send: the message id to quote, member ids
+// to tag, and the thread to post in (a topic id or name; WhatsApp has none,
+// and the send then goes to the group with Response.ThreadIgnored set).
+type SendOptions struct {
+	ReplyTo  string
+	Mentions []string
+	Thread   string
+}
+
+// SendWith sends text with quote, tags and thread.
+func (c *Client) SendWith(transport, to, text string, o SendOptions) (Response, error) {
+	return c.Do(Request{Op: "send", Transport: transport, To: to, Text: text,
+		ReplyTo: o.ReplyTo, Mentions: o.Mentions, Thread: o.Thread}, time.Now().Add(sendDeadline))
+}
+
+// SendFileWith sends a local file (photos as photos, other files as
+// documents, at most 20 MB) quoting o.ReplyTo and posting in o.Thread.
+func (c *Client) SendFileWith(transport, to, path, caption string, o SendOptions) (Response, error) {
+	return c.Do(Request{Op: "sendfile", Transport: transport, To: to, Path: path, Text: caption,
+		ReplyTo: o.ReplyTo, Thread: o.Thread}, time.Now().Add(31*time.Minute))
+}
+
+// GroupCreateTopics is GroupCreate with threads on from the start (Telegram
+// forum supergroup).
+func (c *Client) GroupCreateTopics(transport, name string, members []string) (*Group, error) {
+	resp, err := c.Do(Request{Op: "group_create", Transport: transport, Name: name, Members: members, Topics: true}, time.Now().Add(90*time.Second))
+	return resp.Group, err
+}
+
+// TopicCreate creates a thread in a group and returns it. A Telegram
+// supergroup the account created gets topics turned on first; otherwise a
+// group without topics is an error. WhatsApp answers that its groups have
+// no threads.
+func (c *Client) TopicCreate(transport, group, name string) (*Topic, error) {
+	resp, err := c.Do(Request{Op: "topic_create", Transport: transport, To: group, Name: name}, time.Now().Add(60*time.Second))
+	return resp.Topic, err
+}
+
+// TopicList lists a group's threads.
+func (c *Client) TopicList(transport, group string) ([]Topic, error) {
+	resp, err := c.Do(Request{Op: "topic_list", Transport: transport, To: group}, time.Now().Add(60*time.Second))
+	return resp.Topics, err
+}

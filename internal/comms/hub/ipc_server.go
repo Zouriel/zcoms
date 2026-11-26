@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 
 	"github.com/Zouriel/zcoms/client"
 	"github.com/Zouriel/zcoms/internal/comms/telegram"
@@ -99,14 +100,15 @@ func (d *daemon) handleIPC(conn net.Conn) {
 			return
 		}
 		addr := transport.Address{Transport: transportName(req), ID: to}
+		thread, ignored := d.sendThread(transportName(req), req.Thread)
 		var ref transport.MsgRef
-		if req.ReplyTo != "" || len(req.Mentions) > 0 {
+		if req.ReplyTo != "" || len(req.Mentions) > 0 || thread != "" {
 			rs, ok := t.(transport.RichSender)
 			if !ok {
 				writeIPC(conn, client.Response{Error: transportName(req) + " cannot quote or tag in a send"})
 				return
 			}
-			ref, err = rs.SendWith(addr, req.Text, transport.SendOptions{ReplyTo: req.ReplyTo, Mentions: req.Mentions})
+			ref, err = rs.SendWith(addr, req.Text, transport.SendOptions{ReplyTo: req.ReplyTo, Mentions: req.Mentions, Thread: thread})
 		} else {
 			ref, err = t.Send(addr, req.Text)
 		}
@@ -115,11 +117,12 @@ func (d *daemon) handleIPC(conn net.Conn) {
 			return
 		}
 		writeIPC(conn, client.Response{
-			OK:        true,
-			MessageID: parseIntOrZero(ref.ID),
-			MsgRef:    ref.ID,
-			ChatID:    parseIntOrZero(ref.ChatID),
-			Address:   ref.ChatID,
+			OK:            true,
+			MessageID:     parseIntOrZero(ref.ID),
+			MsgRef:        ref.ID,
+			ChatID:        parseIntOrZero(ref.ChatID),
+			Address:       ref.ChatID,
+			ThreadIgnored: ignored,
 		})
 
 	case "sendfile":
@@ -136,12 +139,28 @@ func (d *daemon) handleIPC(conn net.Conn) {
 			writeIPC(conn, client.Response{Error: err.Error()})
 			return
 		}
-		ref, err := t.SendFile(transport.Address{Transport: transportName(req), ID: to}, req.Path, req.Text)
+		if err := checkSendFile(req.Path); err != nil {
+			writeIPC(conn, client.Response{Error: err.Error()})
+			return
+		}
+		addr := transport.Address{Transport: transportName(req), ID: to}
+		thread, ignored := d.sendThread(transportName(req), req.Thread)
+		var ref transport.MsgRef
+		if req.ReplyTo != "" || thread != "" {
+			fs, ok := t.(transport.FileSender)
+			if !ok {
+				writeIPC(conn, client.Response{Error: transportName(req) + " cannot quote a file send"})
+				return
+			}
+			ref, err = fs.SendFileWith(addr, req.Path, req.Text, transport.SendOptions{ReplyTo: req.ReplyTo, Thread: thread})
+		} else {
+			ref, err = t.SendFile(addr, req.Path, req.Text)
+		}
 		if err != nil {
 			writeIPC(conn, client.Response{Error: err.Error()})
 			return
 		}
-		writeIPC(conn, client.Response{OK: true, ChatID: parseIntOrZero(ref.ChatID), Address: ref.ChatID, Label: ref.Label})
+		writeIPC(conn, client.Response{OK: true, MsgRef: ref.ID, ChatID: parseIntOrZero(ref.ChatID), Address: ref.ChatID, Label: ref.Label, ThreadIgnored: ignored})
 
 	case "read":
 		// Non-Telegram transports read from their own history store (To is the
@@ -307,7 +326,8 @@ func (d *daemon) handleIPC(conn net.Conn) {
 		return
 
 	// --- group registry and group ops ---------------------------------------
-	case "group_create", "group_add", "group_list", "group_members", "group_read", "group_set", "group_get":
+	case "group_create", "group_add", "group_list", "group_members", "group_read", "group_set", "group_get",
+		"topic_create", "topic_list":
 		d.handleGroupOp(conn, req)
 
 	// --- contacts directory (comms.db) ---------------------------------------
@@ -318,6 +338,20 @@ func (d *daemon) handleIPC(conn net.Conn) {
 	default:
 		writeIPC(conn, client.Response{Error: "unknown op: " + req.Op})
 	}
+}
+
+// sendThread is the thread a send should use: the requested one where the
+// transport has threads, otherwise none, with ignored set when one was asked
+// for, so the send still reaches the chat itself.
+func (d *daemon) sendThread(transportName, thread string) (string, bool) {
+	thread = strings.TrimSpace(thread)
+	if thread == "" {
+		return "", false
+	}
+	if !d.supportsThreads(transportName) {
+		return "", true
+	}
+	return thread, false
 }
 
 func writeIPC(conn net.Conn, resp client.Response) {

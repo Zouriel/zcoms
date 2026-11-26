@@ -1,6 +1,10 @@
 package cmd
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestShellQuote(t *testing.T) {
 	for in, want := range map[string]string{
@@ -35,5 +39,37 @@ func TestParsePlatform(t *testing.T) {
 		if got := parsePlatform(in); got != want {
 			t.Errorf("parsePlatform(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestProjectSayLine(t *testing.T) {
+	dir := t.TempDir()
+	shot := filepath.Join(dir, "shot one.png")
+	if err := os.WriteFile(shot, []byte("png"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := projectSayLine("/repo", []string{"--thread", "login bug", "--file", shot, "fixed", "the", "form"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `project say --path /repo --thread "login bug" --file ` + shellQuote(shot) + ` "fixed the form"`
+	if got != want {
+		t.Fatalf("got  %s\nwant %s", got, want)
+	}
+	// Files alone are enough; text alone keeps the old shape.
+	if got, err := projectSayLine("/repo", []string{"--file=" + shot}); err != nil || got != "project say --path /repo --file "+shellQuote(shot) {
+		t.Fatalf("file only: %s %v", got, err)
+	}
+	if got, _ := projectSayLine("/repo", []string{"hi"}); got != "project say --path /repo hi" {
+		t.Fatalf("text only: %s", got)
+	}
+	if _, err := projectSayLine("/repo", nil); err == nil {
+		t.Fatal("nothing to say must fail")
+	}
+	if _, err := projectSayLine("/repo", []string{"--file", filepath.Join(dir, "missing.png"), "x"}); err == nil {
+		t.Fatal("a missing file must fail")
+	}
+	if _, err := projectSayLine("/repo", []string{"--thread"}); err == nil {
+		t.Fatal("--thread without a value must fail")
 	}
 }

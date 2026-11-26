@@ -89,6 +89,9 @@ func (t *telegramTransport) dispatchGroup(msg telegram.Message, inbound chan<- t
 		ReplyToID: replyTo,
 		Call:      call,
 	}
+	if th := msg.Thread(); th != 0 {
+		in.ThreadID = strconv.FormatInt(th, 10)
+	}
 	select {
 	case inbound <- in:
 	case <-time.After(5 * time.Second):
@@ -208,11 +211,20 @@ func (t *telegramTransport) failedMembers(ids []int64) error {
 
 // CreateGroup creates a supergroup and adds the members.
 func (t *telegramTransport) CreateGroup(name string, members []string) (transport.GroupInfo, error) {
+	return t.createGroup(name, members, false)
+}
+
+// CreateForumGroup creates a supergroup with topics on and adds the members.
+func (t *telegramTransport) CreateForumGroup(name string, members []string) (transport.GroupInfo, error) {
+	return t.createGroup(name, members, true)
+}
+
+func (t *telegramTransport) createGroup(name string, members []string, forum bool) (transport.GroupInfo, error) {
 	ids, err := parseUserIDs(members)
 	if err != nil {
 		return transport.GroupInfo{}, err
 	}
-	chatID, err := telegram.CreateSupergroup(t.d.tdjson, t.d.clientID, name)
+	chatID, err := telegram.CreateSupergroup(t.d.tdjson, t.d.clientID, name, forum)
 	if err != nil {
 		return transport.GroupInfo{}, err
 	}
@@ -372,6 +384,9 @@ func (t *telegramTransport) SendWith(to transport.Address, text string, o transp
 		return transport.MsgRef{}, err
 	}
 	var opts telegram.SendOptions
+	if opts.Thread, err = t.d.threadID(chatID, o.Thread); err != nil {
+		return transport.MsgRef{}, err
+	}
 	if o.ReplyTo != "" {
 		if opts.ReplyTo, err = strconv.ParseInt(o.ReplyTo, 10, 64); err != nil {
 			return transport.MsgRef{}, fmt.Errorf("bad reply_to message id %q", o.ReplyTo)
@@ -396,9 +411,13 @@ func (t *telegramTransport) SendWith(to transport.Address, text string, o transp
 	var last int64
 	for i, part := range chunk(text, telegramMaxLen) {
 		var id int64
-		if i == 0 {
+		switch {
+		case i == 0:
 			id, err = telegram.SendTextMessageWith(t.d.tdjson, t.d.clientID, chatID, part, opts)
-		} else {
+		case opts.Thread != 0:
+			// Later parts stay in the thread but carry no quote or tags.
+			id, err = telegram.SendTextMessageWith(t.d.tdjson, t.d.clientID, chatID, part, telegram.SendOptions{Thread: opts.Thread})
+		default:
 			id, err = telegram.SendTextMessage(t.d.tdjson, t.d.clientID, chatID, part)
 		}
 		if err != nil {

@@ -17,7 +17,7 @@ import (
 func groupCmd(transportName, label string) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "group",
-		Short: label + " groups: create, add members, list, members, view",
+		Short: label + " groups: create, add members, list, members, view, threads",
 		Long: "Group commands on " + label + ", served by the comms daemon. A group is named by\n" +
 			"its title (as `group list` shows it), an alias, or its native id. Creating a\n" +
 			"group always adds the owner too (set with `zc config owner <contact>`).\n" +
@@ -32,6 +32,7 @@ func groupCmd(transportName, label string) *cobra.Command {
 		return c, nil
 	}
 
+	var topics bool
 	create := &cobra.Command{
 		Use:   "create <name> <member>...",
 		Short: "Create a group with these members (the owner is always added)",
@@ -41,7 +42,12 @@ func groupCmd(transportName, label string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			g, err := c.GroupCreate(transportName, args[0], args[1:])
+			var g *client.Group
+			if topics {
+				g, err = c.GroupCreateTopics(transportName, args[0], args[1:])
+			} else {
+				g, err = c.GroupCreate(transportName, args[0], args[1:])
+			}
 			if g != nil {
 				fmt.Printf("Created %q (%s)\n", g.Name, g.NativeID)
 			}
@@ -163,7 +169,56 @@ func groupCmd(transportName, label string) *cobra.Command {
 	view.Flags().StringVar(&around, "around", "", "Center the window on this message id")
 	view.Flags().BoolVar(&follow, "follow", false, "Stay attached: print new messages and send what you type")
 
-	root.AddCommand(create, add, list, members, view)
+	if transportName == "telegram" {
+		create.Flags().BoolVar(&topics, "topics", false, "Create it with threads (forum topics) on")
+	}
+
+	topic := &cobra.Command{
+		Use:   "topic <group> <name>",
+		Short: "Start a thread (forum topic) in a group",
+		Long: "Creates a thread in the group and prints its id. When the group has topics\n" +
+			"off and this account created it, topics are turned on first; otherwise an\n" +
+			"admin has to enable them in the group settings. WhatsApp groups have no threads.",
+		Args: cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := daemon()
+			if err != nil {
+				return err
+			}
+			t, err := c.TopicCreate(transportName, args[0], strings.Join(args[1:], " "))
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Started thread %q (id %s); send to it with --thread %s\n", t.Name, t.ID, t.ID)
+			return nil
+		},
+	}
+
+	topicsCmd := &cobra.Command{
+		Use:   "topics <group>",
+		Short: "List a group's threads (forum topics)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := daemon()
+			if err != nil {
+				return err
+			}
+			ts, err := c.TopicList(transportName, args[0])
+			if err != nil {
+				return err
+			}
+			if len(ts) == 0 {
+				fmt.Println("No threads.")
+				return nil
+			}
+			for _, t := range ts {
+				fmt.Printf("%-8s %s\n", t.ID, t.Name)
+			}
+			return nil
+		},
+	}
+
+	root.AddCommand(create, add, list, members, view, topic, topicsCmd)
 	return root
 }
 

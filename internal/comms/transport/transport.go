@@ -146,6 +146,9 @@ type Inbound struct {
 	SenderAlt string
 	ReplyToID string
 	Call      string
+	// ThreadID is the thread (Telegram forum topic id) the call was made in;
+	// empty outside a thread.
+	ThreadID string
 	// ReplyFile is the local path of the quoted message's media on a group
 	// call; Files holds the calling message's own media.
 	ReplyFile string

@@ -20,6 +20,7 @@ import (
 var (
 	_ transport.Grouper           = (*Transport)(nil)
 	_ transport.RichSender        = (*Transport)(nil)
+	_ transport.FileSender        = (*Transport)(nil)
 	_ transport.GroupPolicySetter = (*Transport)(nil)
 	_ transport.GroupStoreTrimmer = (*Transport)(nil)
 )

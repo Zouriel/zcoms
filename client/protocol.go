@@ -28,7 +28,7 @@ func DefaultSocketPath() (string, error) {
 
 // Request is one command sent to the daemon. Op selects which fields are used.
 type Request struct {
-	Op       string `json:"op"`                 // send|sendfile|read|ask|unread|mark_read|resolve|connectors|hello|contact_*|errand_*
+	Op       string `json:"op"`                 // send|sendfile|read|ask|unread|mark_read|resolve|connectors|hello|contact_*|group_*|topic_create|topic_list|errand_*
 	To       string `json:"to,omitempty"`       // @username or numeric chat id / errand target / transport-native id
 	Text     string `json:"text,omitempty"`     // message body / question / caption
 	Path     string `json:"path,omitempty"`     // local file path (sendfile)
@@ -84,6 +84,14 @@ type Request struct {
 	Before string `json:"before,omitempty"`
 	Since  int64  `json:"since,omitempty"`
 
+	// Thread is the thread to post in on send/sendfile: a Telegram forum
+	// topic id, or a topic name the daemon looks up. On WhatsApp (no
+	// threads) it is dropped and the response sets ThreadIgnored.
+	Thread string `json:"thread,omitempty"`
+
+	// Topics creates the group with threads on (group_create, Telegram).
+	Topics bool `json:"topics,omitempty"`
+
 	// group_set flags; nil leaves the flag unchanged.
 	Listen *bool `json:"listen,omitempty"`
 	Follow *bool `json:"follow,omitempty"`
@@ -101,6 +109,13 @@ type Group struct {
 	Aliases   []string `json:"aliases,omitempty"`
 	Listen    bool     `json:"listen"`
 	Follow    bool     `json:"follow"`
+}
+
+// Topic is one thread of a group (a Telegram forum topic). ID is the topic id
+// as a string, usable as Request.Thread.
+type Topic struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // GroupMember is one member of a group. ID is the Telegram user id (as a
@@ -208,6 +223,10 @@ type Event struct {
 	ReplyToID string `json:"reply_to_id,omitempty"`
 	Call      string `json:"call,omitempty"`
 
+	// ThreadID is the thread (Telegram forum topic id) a group call was made
+	// in; send the answer with Request.Thread set to it. Empty outside one.
+	ThreadID string `json:"thread_id,omitempty"`
+
 	// ReplyFile is the local path of the media in the message a call quotes
 	// (someone replies to a photo and @mentions the account). File holds the
 	// calling message's own media. Only calls download group media.
@@ -303,4 +322,12 @@ type Response struct {
 	Groups        []Group        `json:"groups,omitempty"`
 	Members       []GroupMember  `json:"members,omitempty"`
 	GroupMessages []GroupMessage `json:"group_messages,omitempty"`
+
+	// Thread ops: topic_create answers Topic, topic_list Topics.
+	Topic  *Topic  `json:"topic,omitempty"`
+	Topics []Topic `json:"topics,omitempty"`
+
+	// ThreadIgnored says a send asked for a thread on a transport whose
+	// groups have none, so it went to the chat itself.
+	ThreadIgnored bool `json:"thread_ignored,omitempty"`
 }

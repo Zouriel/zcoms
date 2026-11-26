@@ -24,23 +24,35 @@ func daemonRunning() bool {
 	return ok
 }
 
-func daemonSend(to, text string) (handled bool, msgID, chatID int64, err error) {
+func daemonSend(to, text, thread string) (handled bool, msgID, chatID int64, err error) {
 	c, ok := daemonClient()
 	if !ok {
 		return false, 0, 0, nil
+	}
+	if thread != "" {
+		resp, err := c.SendWith("telegram", to, text, client.SendOptions{Thread: thread})
+		return true, resp.MessageID, resp.ChatID, err
 	}
 	resp, err := c.Send(to, text)
 	return true, resp.MessageID, resp.ChatID, err
 }
 
-func daemonSendFile(to, path, caption string) (handled bool, label string, chatID int64, err error) {
+func daemonSendFile(to, path, caption, thread string) (handled bool, label string, chatID int64, err error) {
 	c, ok := daemonClient()
 	if !ok {
 		return false, "", 0, nil
 	}
+	if thread != "" {
+		resp, err := c.SendFileWith("telegram", to, path, caption, client.SendOptions{Thread: thread})
+		return true, resp.Label, resp.ChatID, err
+	}
 	resp, err := c.SendFile(to, path, caption)
 	return true, resp.Label, resp.ChatID, err
 }
+
+// errThreadNeedsDaemon is returned when --thread is used without the daemon:
+// thread names are resolved there.
+var errThreadNeedsDaemon = fmt.Errorf("--thread needs the comms daemon running")
 
 func daemonAsk(to, text string) (handled bool, reply string, err error) {
 	c, ok := daemonClient()

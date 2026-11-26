@@ -89,6 +89,28 @@ type Grouper interface {
 type SendOptions struct {
 	ReplyTo  string
 	Mentions []string
+	// Thread is the forum topic id to post in (Telegram); empty = the chat.
+	Thread string
+}
+
+// FileSender is an optional capability: a transport that can quote a message
+// and post in a thread when sending a file.
+type FileSender interface {
+	SendFileWith(to Address, path, caption string, o SendOptions) (MsgRef, error)
+}
+
+// Topic is one thread (Telegram forum topic) of a group.
+type Topic struct {
+	ID   string
+	Name string
+}
+
+// Topicer is an optional capability: a transport whose groups can hold
+// threads. CreateForumGroup creates a group with threads on from the start.
+type Topicer interface {
+	CreateTopic(group, name string) (Topic, error)
+	Topics(group string) ([]Topic, error)
+	CreateForumGroup(name string, members []string) (GroupInfo, error)
 }
 
 // RichSender is an optional capability: a transport that can quote a message

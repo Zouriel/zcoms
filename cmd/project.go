@@ -189,6 +189,61 @@ func runProjectInit(args []string) error {
 	return forwardToAgent(line)
 }
 
+// projectSayLine parses `zc project say [--thread <t>] [--file <path>]...
+// <text>` and builds the line forwarded to the agent. Files become absolute
+// paths and must exist; text may be empty only when files are sent.
+func projectSayLine(path string, args []string) (string, error) {
+	var thread string
+	var files, words []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--thread" || a == "--file":
+			if i+1 >= len(args) {
+				return "", fmt.Errorf("%s needs a value", a)
+			}
+			i++
+			if a == "--thread" {
+				thread = strings.TrimSpace(args[i])
+				continue
+			}
+			files = append(files, args[i])
+		case strings.HasPrefix(a, "--thread="):
+			thread = strings.TrimSpace(strings.TrimPrefix(a, "--thread="))
+		case strings.HasPrefix(a, "--file="):
+			files = append(files, strings.TrimPrefix(a, "--file="))
+		default:
+			words = append(words, a)
+		}
+	}
+	text := strings.TrimSpace(strings.Join(words, " "))
+	if text == "" && len(files) == 0 {
+		return "", fmt.Errorf("say what? zc project say [--thread <name>] [--file <path>]... <text>")
+	}
+	line := "project say --path " + shellQuote(path)
+	if thread != "" {
+		line += " --thread " + shellQuote(thread)
+	}
+	for _, f := range files {
+		abs, err := filepath.Abs(expandUserPath(f))
+		if err != nil {
+			return "", err
+		}
+		info, err := os.Stat(abs)
+		if err != nil {
+			return "", fmt.Errorf("file not found: %s", f)
+		}
+		if !info.Mode().IsRegular() {
+			return "", fmt.Errorf("%s is not a regular file", f)
+		}
+		line += " --file " + shellQuote(abs)
+	}
+	if text != "" {
+		line += " " + shellQuote(text)
+	}
+	return line, nil
+}
+
 func init() {
 	projectCommand := &cobra.Command{
 		Use:   "project <init|status|remove|members|alias|tasks|follow|standup|sync|say> [args…]",
@@ -200,7 +255,9 @@ func init() {
 			"  zc project members | alias add|rm <member> <alias>\n" +
 			"  zc project tasks [done|drop <id> | assign <id> <member>]\n" +
 			"  zc project follow on|off | standup now\n" +
-			"  zc project say <text>   (post an update to the project's group)",
+			"  zc project say [--thread <name|id>] [--file <path>]... <text>\n" +
+			"      post an update (and files, photos as photos, 20 MB each) to the\n" +
+			"      project's group; --thread posts in that thread, creating it if needed",
 		DisableFlagParsing: true,
 		SilenceUsage:       true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -215,11 +272,11 @@ func init() {
 				return err
 			}
 			if args[0] == "say" {
-				text := strings.TrimSpace(strings.Join(args[1:], " "))
-				if text == "" {
-					return fmt.Errorf("say what? zc project say <text>")
+				line, err := projectSayLine(path, args[1:])
+				if err != nil {
+					return err
 				}
-				return forwardToAgent("project say --path " + shellQuote(path) + " " + shellQuote(text))
+				return forwardToAgent(line)
 			}
 			line := "project " + args[0] + " --path " + shellQuote(path)
 			if rest := quoteArgs(args[1:]); rest != "" {

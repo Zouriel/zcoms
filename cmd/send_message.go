@@ -13,6 +13,7 @@ import (
 )
 
 func init() {
+	var thread string
 	sendMessageCommand := &cobra.Command{
 		Use:   "send <@username|contact|group|chat id> <message>",
 		Short: "Send a Telegram message to a user",
@@ -23,12 +24,15 @@ func init() {
 
 			// If the bridge daemon is running, route through it (it owns the
 			// session); otherwise talk to Telegram directly.
-			if handled, msgID, chatID, err := daemonSend(username, message); handled {
+			if handled, msgID, chatID, err := daemonSend(username, message, thread); handled {
 				if err != nil {
 					return err
 				}
 				fmt.Printf("Message sent ✅ (message_id=%d, chat_id=%d)\n", msgID, chatID)
 				return nil
+			}
+			if thread != "" {
+				return errThreadNeedsDaemon
 			}
 
 			apiID, apiHash, err := resolveTelegramCredentials()
@@ -122,5 +126,6 @@ func init() {
 		},
 	}
 
+	sendMessageCommand.Flags().StringVar(&thread, "thread", "", "Post in this group thread (topic id or name)")
 	tgCmd.AddCommand(sendMessageCommand)
 }

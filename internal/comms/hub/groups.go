@@ -404,6 +404,9 @@ func (d *daemon) groupOp(req client.Request) (client.Response, error) {
 	case "group_get":
 		grp, err := d.resolveGroupRef(tn, req.To)
 		return client.Response{Group: &grp}, err
+
+	case "topic_create", "topic_list":
+		return d.topicOp(req, agent)
 	}
 	return client.Response{}, fmt.Errorf("unknown op: %s", req.Op)
 }
@@ -445,7 +448,17 @@ func (d *daemon) groupCreate(tn string, req client.Request) (client.Response, er
 	// something that was knowable up front; the error is reported after create.
 	ownerAddr, ownerErr := d.ownerAddress(tn)
 
-	info, createErr := g.CreateGroup(name, addrs)
+	var info transport.GroupInfo
+	var createErr error
+	if req.Topics {
+		tp, err := d.topicer(tn)
+		if err != nil {
+			return client.Response{}, err
+		}
+		info, createErr = tp.CreateForumGroup(name, addrs)
+	} else {
+		info, createErr = g.CreateGroup(name, addrs)
+	}
 	if info.NativeID == "" {
 		if createErr == nil {
 			createErr = errors.New("the transport returned no group id")
@@ -597,6 +610,7 @@ func (d *daemon) groupEvent(in transport.Inbound) client.Event {
 		ReplyToID: in.ReplyToID,
 		Call:      in.Call,
 		ReplyFile: in.ReplyFile,
+		ThreadID:  in.ThreadID,
 	}
 	ev.SenderIsOwner = d.isOwner(in.From.Transport, in.SenderID, in.SenderAlt)
 	if len(in.Files) > 0 {

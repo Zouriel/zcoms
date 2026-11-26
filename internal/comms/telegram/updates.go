@@ -84,6 +84,12 @@ type Message struct {
 	SenderID   SenderID `json:"sender_id"`
 	Content    Content  `json:"content"`
 	ReplyTo    *ReplyTo `json:"reply_to,omitempty"`
+
+	// TopicID is the forum topic the message was posted in (TDLib 1.8.64);
+	// IsTopicMessage and MessageThreadID are the older builds' spelling.
+	TopicID         *MessageTopic `json:"topic_id,omitempty"`
+	IsTopicMessage  bool          `json:"is_topic_message,omitempty"`
+	MessageThreadID int64         `json:"message_thread_id,omitempty"`
 }
 
 // ReplyTo is a message's reply target. Type is "messageReplyToMessage" for a

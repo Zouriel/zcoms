@@ -68,7 +68,7 @@ func init() {
 					}
 				}
 				if message != "" && !waitForReply {
-					handled, _, _, err := daemonSend(target, message)
+					handled, _, _, err := daemonSend(target, message, "")
 					if handled {
 						return err
 					}

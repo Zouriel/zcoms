@@ -613,9 +613,16 @@ func (t *Transport) Send(to transport.Address, text string) (transport.MsgRef, e
 	return transport.MsgRef{ID: resp.ID, ChatID: jid.String()}, nil
 }
 
-// SendFile uploads a local file and sends it as a document with an optional
-// caption (documents carry any file type reliably).
+// SendFile uploads a local file: images as image messages, anything else as
+// a document (documents carry any file type reliably), with an optional
+// caption.
 func (t *Transport) SendFile(to transport.Address, path, caption string) (transport.MsgRef, error) {
+	return t.SendFileWith(to, path, caption, transport.SendOptions{})
+}
+
+// SendFileWith is SendFile quoting o.ReplyTo when it is still stored.
+// WhatsApp has no threads, so o.Thread is ignored (the hub drops it first).
+func (t *Transport) SendFileWith(to transport.Address, path, caption string, o transport.SendOptions) (transport.MsgRef, error) {
 	c, err := t.connected()
 	if err != nil {
 		return transport.MsgRef{}, err
@@ -628,17 +635,71 @@ func (t *Transport) SendFile(to transport.Address, path, caption string) (transp
 	if err != nil {
 		return transport.MsgRef{}, err
 	}
-	ctx := context.Background()
-	up, err := c.Upload(ctx, data, whatsmeow.MediaDocument)
-	if err != nil {
-		return transport.MsgRef{}, fmt.Errorf("whatsapp upload: %w", err)
+	var ci *waE2E.ContextInfo
+	replyTo := ""
+	if o.ReplyTo != "" {
+		if q, ok := t.quoteContext(jid.String(), o.ReplyTo); ok {
+			ci, replyTo = q, o.ReplyTo
+		}
 	}
+	ctx := context.Background()
 	name := filepath.Base(path)
 	mimeType := mime.TypeByExtension(filepath.Ext(path))
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
 	}
-	doc := &waE2E.DocumentMessage{
+	photo := isPhoto(path)
+	mediaType := whatsmeow.MediaDocument
+	if photo {
+		mediaType = whatsmeow.MediaImage
+	}
+	up, err := c.Upload(ctx, data, mediaType)
+	if err != nil {
+		return transport.MsgRef{}, fmt.Errorf("whatsapp upload: %w", err)
+	}
+	msg, kind := fileMessage(up, name, mimeType, caption, photo, ci)
+	resp, err := c.SendMessage(ctx, jid, msg)
+	if err != nil {
+		return transport.MsgRef{}, err
+	}
+	if isGroupJID(jid.String()) {
+		t.storeOwnGroupSend(jid.String(), resp.ID, caption, kind, resp.Timestamp, replyTo)
+	} else {
+		t.storeMessage(jid.String(), resp.ID, "you", true, caption, kind, path, resp.Timestamp, false)
+	}
+	return transport.MsgRef{ID: resp.ID, ChatID: jid.String(), Label: name}, nil
+}
+
+// isPhoto reports whether a file goes out as a WhatsApp image message.
+func isPhoto(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".jpg", ".jpeg", ".png", ".webp":
+		return true
+	}
+	return false
+}
+
+// fileMessage builds the image or document message for an uploaded file,
+// quoting ci when set. It returns the message and its kind tag.
+func fileMessage(up whatsmeow.UploadResponse, name, mimeType, caption string, photo bool, ci *waE2E.ContextInfo) (*waE2E.Message, string) {
+	var capt *string
+	if strings.TrimSpace(caption) != "" {
+		capt = proto.String(caption)
+	}
+	if photo {
+		return &waE2E.Message{ImageMessage: &waE2E.ImageMessage{
+			URL:           proto.String(up.URL),
+			DirectPath:    proto.String(up.DirectPath),
+			MediaKey:      up.MediaKey,
+			FileEncSHA256: up.FileEncSHA256,
+			FileSHA256:    up.FileSHA256,
+			FileLength:    proto.Uint64(up.FileLength),
+			Mimetype:      proto.String(mimeType),
+			Caption:       capt,
+			ContextInfo:   ci,
+		}}, "messagePhoto"
+	}
+	return &waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{
 		URL:           proto.String(up.URL),
 		DirectPath:    proto.String(up.DirectPath),
 		MediaKey:      up.MediaKey,
@@ -648,20 +709,9 @@ func (t *Transport) SendFile(to transport.Address, path, caption string) (transp
 		Mimetype:      proto.String(mimeType),
 		FileName:      proto.String(name),
 		Title:         proto.String(name),
-	}
-	if strings.TrimSpace(caption) != "" {
-		doc.Caption = proto.String(caption)
-	}
-	resp, err := c.SendMessage(ctx, jid, &waE2E.Message{DocumentMessage: doc})
-	if err != nil {
-		return transport.MsgRef{}, err
-	}
-	if isGroupJID(jid.String()) {
-		t.storeOwnGroupSend(jid.String(), resp.ID, caption, "messageDocument", resp.Timestamp, "")
-	} else {
-		t.storeMessage(jid.String(), resp.ID, "you", true, caption, "messageDocument", path, resp.Timestamp, false)
-	}
-	return transport.MsgRef{ID: resp.ID, ChatID: jid.String(), Label: name}, nil
+		Caption:       capt,
+		ContextInfo:   ci,
+	}}, "messageDocument"
 }
 
 // connected returns the live client or a descriptive error so a send before
