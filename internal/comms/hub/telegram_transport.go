@@ -26,6 +26,8 @@ type telegramTransport struct {
 	fetchMessage func(chatID, messageID int64) (telegram.Message, error)
 	fetchFile    func(f telegram.File) (string, error)
 	mediaRoot    string
+	// chatInfo overrides the TDLib getChat lookup used for join notices (tests).
+	chatInfo func(chatID int64) (isGroup bool, title string, err error)
 
 	mu    sync.Mutex
 	state transport.ConnStatus
@@ -150,9 +152,13 @@ func (t *telegramTransport) dispatchUpdate(updateJSON string, inbound chan<- tra
 	if !ok {
 		return
 	}
-	// Groups and supergroups have negative chat ids. Only a call in a listen
-	// group gets through dispatchGroup; channels and plain messages stop there.
+	// Groups and supergroups have negative chat ids. A notice that the account
+	// joined becomes a Joined Inbound; otherwise only a call in a listen group
+	// gets through dispatchGroup; channels and plain messages stop there.
 	if u.Message.ChatID < 0 {
+		if t.dispatchJoin(u.Message, inbound) {
+			return
+		}
 		t.dispatchGroup(u.Message, inbound)
 		return
 	}

@@ -414,6 +414,9 @@ func (d *daemon) groupCreate(tn string, req client.Request) (client.Response, er
 			problems = append(problems, "group created but adding the owner failed: "+err.Error())
 		}
 	}
+	// The agent tier turns new groups on as general groups; a created group is
+	// announced like one the account was added to.
+	d.groupJoined(tn, grp.NativeID, grp.Name)
 	if len(problems) > 0 {
 		return client.Response{Group: &grp}, errors.New(strings.Join(problems, "; "))
 	}
@@ -545,4 +548,75 @@ func (d *daemon) groupEvent(in transport.Inbound) client.Event {
 		ev.ChatID = parseIntOrZero(in.From.ID)
 	}
 	return ev
+}
+
+// joinDedupe is how long a group announced as joined is not announced again:
+// creating a group reaches the daemon both from group_create and as the
+// platform's own join notice.
+const joinDedupe = 2 * time.Minute
+
+// groupJoined records a group the account was added to, joined or created,
+// and tells subscribers with a group_joined event. The agent tier decides what
+// to do with it; comms only keeps its registry current. An empty name is
+// filled from the registry or the transport's group list so a known name is
+// never overwritten with the raw id.
+func (d *daemon) groupJoined(transportName, nativeID, name string) {
+	nativeID = strings.TrimSpace(nativeID)
+	if transportName == "" || nativeID == "" {
+		return
+	}
+	key := transportName + "\x00" + nativeID
+	now := time.Now()
+	d.joinMu.Lock()
+	if d.joinSeen == nil {
+		d.joinSeen = map[string]time.Time{}
+	}
+	if last, ok := d.joinSeen[key]; ok && now.Sub(last) < joinDedupe {
+		d.joinMu.Unlock()
+		return
+	}
+	d.joinSeen[key] = now
+	for k, t := range d.joinSeen {
+		if now.Sub(t) >= joinDedupe {
+			delete(d.joinSeen, k)
+		}
+	}
+	d.joinMu.Unlock()
+
+	name = strings.TrimSpace(name)
+	if name == "" && d.contacts != nil {
+		if g, err := d.contacts.GroupByNative(transportName, nativeID); err == nil && g.Name != nativeID {
+			name = g.Name
+		}
+	}
+	if name == "" {
+		if infos, err := d.listGroups(transportName); err == nil {
+			for _, gi := range infos {
+				if gi.NativeID == nativeID {
+					name = gi.Name
+				}
+			}
+		}
+	}
+	if d.contacts != nil {
+		g, err := d.contacts.UpsertGroup(transportName, nativeID, name)
+		if err != nil {
+			d.logf("recording joined group %s/%s: %v", transportName, nativeID, err)
+		} else {
+			name = g.Name
+		}
+	}
+	d.logf("joined %s group %q (%s)", transportName, name, nativeID)
+	ev := client.Event{
+		Event:     client.EventGroupJoined,
+		Transport: transportName,
+		Address:   nativeID,
+		GroupName: name,
+		Group:     true,
+		Date:      now.Unix(),
+	}
+	if transportName == "telegram" {
+		ev.ChatID = parseIntOrZero(nativeID)
+	}
+	d.broadcast(ev)
 }

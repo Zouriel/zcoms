@@ -96,6 +96,70 @@ func (t *telegramTransport) dispatchGroup(msg telegram.Message, inbound chan<- t
 	}
 }
 
+// joinedSelf reports whether a service message says this account joined the
+// chat: it was added (messageChatAddMembers, or listed when a basic group was
+// created), it joined by link or request, or it created a supergroup.
+func joinedSelf(msg telegram.Message, me int64) bool {
+	if me == 0 {
+		return false
+	}
+	bySelf := msg.IsOutgoing || (msg.SenderID.Type == "messageSenderUser" && msg.SenderID.UserID == me)
+	switch msg.Content.Type {
+	case "messageChatAddMembers", "messageBasicGroupChatCreate":
+		for _, id := range msg.Content.MemberUserIDs {
+			if id == me {
+				return true
+			}
+		}
+		return msg.Content.Type == "messageBasicGroupChatCreate" && bySelf
+	case "messageSupergroupChatCreate", "messageChatJoinByLink", "messageChatJoinByRequest":
+		return bySelf
+	}
+	return false
+}
+
+// dispatchJoin turns a notice that the account joined a group into a Joined
+// Inbound. It reports whether msg was such a notice (channels are dropped).
+func (t *telegramTransport) dispatchJoin(msg telegram.Message, inbound chan<- transport.Inbound) bool {
+	me, _ := t.d.self()
+	if !joinedSelf(msg, me) {
+		return false
+	}
+	isGroup, title, err := t.lookupChat(msg.ChatID)
+	if err != nil {
+		t.d.logf("joined chat %d: %v", msg.ChatID, err)
+		return true
+	}
+	if !isGroup {
+		return true // a channel, not a group
+	}
+	if title == "" {
+		title = msg.Content.Title
+	}
+	in := transport.Inbound{
+		From:      transport.Address{Transport: "telegram", ID: strconv.FormatInt(msg.ChatID, 10)},
+		Joined:    true,
+		GroupName: title,
+		At:        time.Unix(msg.Date, 0),
+	}
+	select {
+	case inbound <- in:
+	case <-time.After(5 * time.Second):
+		t.d.logf("inbound channel full: dropped a join notice for %s", title)
+	}
+	return true
+}
+
+func (t *telegramTransport) lookupChat(chatID int64) (bool, string, error) {
+	if t.chatInfo != nil {
+		return t.chatInfo(chatID)
+	}
+	if t.d.tdjson == nil {
+		return false, "", fmt.Errorf("no telegram session")
+	}
+	return telegram.IsGroupChat(t.d.tdjson, t.d.clientID, chatID)
+}
+
 // isOwnMessage reports whether a message in a chat was sent by this account.
 func (t *telegramTransport) isOwnMessage(chatID, messageID int64) bool {
 	if t.ownMessage != nil {

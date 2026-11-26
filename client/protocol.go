@@ -155,10 +155,22 @@ type UnreadItem struct {
 	File      string `json:"file,omitempty"`
 }
 
+// Event kinds carried in Event.Event.
+const (
+	// EventMessage is an incoming message (1:1, or a group call).
+	EventMessage = "message"
+	// EventGroupJoined says the connected account was added to (or joined, or
+	// created) a group. Address is the group's native id and GroupName its
+	// name; Group is set so subscribers that do not handle groups drop it.
+	// The daemon has already recorded the group in its registry.
+	EventGroupJoined = "group_joined"
+)
+
 // Event is one pushed message on a subscribe stream: an incoming 1:1 message the
-// daemon routed to this subscriber (by role/module name).
+// daemon routed to this subscriber (by role/module name), a group call, or a
+// group_joined notice.
 type Event struct {
-	Event string `json:"event"` // "message"
+	Event string `json:"event"` // EventMessage | EventGroupJoined
 
 	// Transport names the connector the message arrived on ("telegram" |
 	// "whatsapp"). Address is the transport-native conversation id to reply to

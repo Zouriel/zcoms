@@ -122,6 +122,12 @@ type Content struct {
 		Entities []TextEntity `json:"entities"`
 	} `json:"caption"`
 
+	// Service messages about membership: messageChatAddMembers and
+	// messageBasicGroupChatCreate list the users added; the create messages
+	// carry the group's title.
+	MemberUserIDs []int64 `json:"member_user_ids,omitempty"`
+	Title         string  `json:"title,omitempty"`
+
 	Photo *struct {
 		Sizes []PhotoSize `json:"sizes"`
 	} `json:"photo"`

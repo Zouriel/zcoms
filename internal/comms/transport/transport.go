@@ -146,4 +146,9 @@ type Inbound struct {
 	// ReplyFile is the local path of the quoted message's media on a group
 	// call; Files holds the calling message's own media.
 	ReplyFile string
+
+	// Joined marks a notice, not a message: the account was added to, joined
+	// or created the group From (GroupName is its name when known). The hub
+	// records the group and emits a group_joined event; nothing else is set.
+	Joined bool
 }

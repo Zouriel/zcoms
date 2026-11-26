@@ -80,6 +80,40 @@ func (t *Transport) isSelf(jid string) bool {
 	return false
 }
 
+// onGroupInfo emits a join notice when a group change lists this account
+// among the members who joined or were added.
+func (t *Transport) onGroupInfo(e *events.GroupInfo) {
+	for _, j := range e.Join {
+		if t.isSelf(j.String()) {
+			name := ""
+			if e.Name != nil {
+				name = e.Name.Name
+			}
+			t.onJoined(e.JID, name)
+			return
+		}
+	}
+}
+
+// onJoined tells the hub the account is now in group jid (added, joined by
+// invite, or created it). The hub records the group and fills in a missing
+// name; nothing about the group's messages changes here.
+func (t *Transport) onJoined(jid types.JID, name string) {
+	if jid.Server != types.GroupServer || t.inbound == nil {
+		return
+	}
+	in := transport.Inbound{
+		From:      transport.Address{Transport: "whatsapp", ID: jid.ToNonAD().String()},
+		Joined:    true,
+		GroupName: strings.TrimSpace(name),
+		At:        time.Now(),
+	}
+	select {
+	case t.inbound <- in:
+	case <-time.After(5 * time.Second):
+	}
+}
+
 // contextInfo returns the ContextInfo of whichever message type carries one.
 func contextInfo(m *waE2E.Message) *waE2E.ContextInfo {
 	if m == nil {

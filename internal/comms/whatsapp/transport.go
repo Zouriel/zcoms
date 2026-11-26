@@ -328,6 +328,10 @@ func (t *Transport) handleEvent(evt any) {
 		t.setStatus(transport.StateConnected, "")
 	case *events.Message:
 		t.onMessage(e)
+	case *events.JoinedGroup:
+		t.onJoined(e.JID, e.Name)
+	case *events.GroupInfo:
+		t.onGroupInfo(e)
 	case *events.Receipt:
 		// The owner read messages (on this or another device). Clear them from our
 		// unread store so triage doesn't digest things the owner already saw.

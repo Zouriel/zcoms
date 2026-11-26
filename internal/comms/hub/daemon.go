@@ -49,6 +49,11 @@ type daemon struct {
 	// never blocks on a slow subscriber (pushEvent drops when the buffer fills).
 	subMu       sync.Mutex
 	subscribers map[string][]chan client.Event
+
+	// joinMu guards joinSeen: when each group was last announced as joined,
+	// so a create that also arrives as a platform join event is announced once.
+	joinMu   sync.Mutex
+	joinSeen map[string]time.Time
 }
 
 func (d *daemon) logf(format string, a ...any) { fmt.Printf("[comms] "+format+"\n", a...) }
@@ -136,6 +141,10 @@ func (d *daemon) consumeInbound() {
 // path) before broadcasting to the subscribed agent tier, which owns all policy
 // (allow-list, routing, auto-reply, triage). Comms itself decides nothing.
 func (d *daemon) deliverInbound(in transport.Inbound) {
+	if in.Joined {
+		d.groupJoined(in.From.Transport, in.From.ID, in.GroupName)
+		return
+	}
 	if in.Group {
 		d.broadcast(d.groupEvent(in))
 		return
