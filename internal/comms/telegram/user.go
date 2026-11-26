@@ -13,8 +13,21 @@ type User struct {
 	ID          int64  `json:"id"`
 	FirstName   string `json:"first_name"`
 	LastName    string `json:"last_name"`
-	Username    string `json:"username"`
+	Username    string `json:"username"` // pre-1.8.9 TDLib only; see Usernames
 	PhoneNumber string `json:"phone_number"`
+	// Usernames is where TDLib 1.8.9+ puts the @handles; the first active one
+	// is copied into Username by fillUsername.
+	Usernames struct {
+		ActiveUsernames []string `json:"active_usernames"`
+	} `json:"usernames"`
+}
+
+// fillUsername sets Username from the active usernames when TDLib left the
+// legacy field empty, so mention matching sees the account's @handle.
+func (u *User) fillUsername() {
+	if u.Username == "" && len(u.Usernames.ActiveUsernames) > 0 {
+		u.Username = u.Usernames.ActiveUsernames[0]
+	}
 }
 
 type FormattedText struct {
@@ -210,6 +223,7 @@ func FetchCurrentUser(tdjson *TDJSON, clientID int32) (User, error) {
 	if err := json.Unmarshal([]byte(responseJSON), &user); err != nil {
 		return User{}, err
 	}
+	user.fillUsername()
 
 	return user, nil
 }
@@ -230,6 +244,7 @@ func FetchUser(tdjson *TDJSON, clientID int32, userID int64) (User, error) {
 	if err := json.Unmarshal([]byte(responseJSON), &user); err != nil {
 		return User{}, err
 	}
+	user.fillUsername()
 	if user.ID == 0 {
 		return User{}, fmt.Errorf("user not found: %d", userID)
 	}
