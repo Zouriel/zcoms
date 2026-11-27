@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Zouriel/zcoms/client"
 	"github.com/spf13/cobra"
 )
 
@@ -78,6 +79,54 @@ func parsePlatform(ans string) string {
 	return ""
 }
 
+// isNoGroup reports whether a group lookup failed only because nothing has
+// that name (the daemon's error crosses the socket as text).
+func isNoGroup(err error) bool {
+	return err != nil && strings.HasPrefix(err.Error(), "no ") && strings.Contains(err.Error(), " group named ")
+}
+
+// splitMembers reads a comma or space separated member list.
+func splitMembers(s string) []string {
+	return strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })
+}
+
+// offerCreateGroup asks to create the missing group and returns its name, or
+// "" when the owner declines. The daemon always adds the owner; a Telegram
+// group gets topics on so project updates have their own thread.
+func offerCreateGroup(in *bufio.Reader, c groupCreator, transport, name string) (string, error) {
+	yes, err := askYesNo(in, fmt.Sprintf("No group named %q. Create it?", name), true)
+	if err != nil || !yes {
+		return "", err
+	}
+	ans, err := promptLine(in, "Other members to add (usernames or phone numbers, comma separated; you are added anyway, Enter for none): ")
+	if err != nil {
+		return "", err
+	}
+	members := splitMembers(ans)
+	var g *client.Group
+	if transport == "telegram" {
+		g, err = c.GroupCreateTopics(transport, name, members)
+	} else {
+		g, err = c.GroupCreate(transport, name, members)
+	}
+	if g != nil {
+		fmt.Printf("Created %q\n", g.Name)
+	}
+	if err != nil {
+		if g == nil {
+			return "", fmt.Errorf("creating the group: %w", err)
+		}
+		fmt.Printf("warning: %v\n", err) // created, but a member could not be added
+	}
+	return g.Name, nil
+}
+
+// groupCreator is the part of the daemon client init needs to make a group.
+type groupCreator interface {
+	GroupCreate(transport, name string, members []string) (*client.Group, error)
+	GroupCreateTopics(transport, name string, members []string) (*client.Group, error)
+}
+
 func askYesNo(r *bufio.Reader, prompt string, def bool) (bool, error) {
 	hint := " [y/N] "
 	if def {
@@ -143,7 +192,18 @@ func runProjectInit(args []string) error {
 			o.group = g.Name
 			break
 		}
-		fmt.Println(gerr)
+		if isNoGroup(gerr) {
+			made, err := offerCreateGroup(in, c, o.transport, o.group)
+			if err != nil {
+				return err
+			}
+			if made != "" {
+				o.group = made
+				break
+			}
+		} else {
+			fmt.Println(gerr)
+		}
 		if tries >= 2 {
 			return fmt.Errorf("no group picked")
 		}
