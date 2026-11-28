@@ -437,6 +437,9 @@ func (d *daemon) groupCreate(tn string, req client.Request) (client.Response, er
 	if name == "" {
 		return client.Response{}, errors.New("a group needs a name")
 	}
+	if req.Disappear > 0 && tn != "telegram" {
+		return client.Response{}, errors.New("disappearing messages are Telegram only")
+	}
 	if tn == "whatsapp" && len([]rune(name)) > 25 {
 		return client.Response{}, errors.New("whatsapp group names are limited to 25 characters")
 	}
@@ -473,6 +476,11 @@ func (d *daemon) groupCreate(tn string, req client.Request) (client.Response, er
 	var problems []string
 	if createErr != nil {
 		problems = append(problems, createErr.Error())
+	}
+	if req.Disappear > 0 {
+		if err := d.setGroupDisappear(tn, info.NativeID, req.Disappear); err != nil {
+			problems = append(problems, "group created but "+err.Error())
+		}
 	}
 	switch {
 	case ownerErr != nil:
@@ -691,4 +699,16 @@ func (d *daemon) groupJoined(transportName, nativeID, name string) {
 		ev.ChatID = parseIntOrZero(nativeID)
 	}
 	d.broadcast(ev)
+}
+
+// setGroupDisappear turns on disappearing messages in a new Telegram group.
+func (d *daemon) setGroupDisappear(tn, nativeID string, seconds int32) error {
+	if tn != "telegram" {
+		return errors.New("disappearing messages are Telegram only")
+	}
+	chatID, err := groupChatID(nativeID)
+	if err != nil {
+		return err
+	}
+	return telegram.SetAutoDelete(d.tdjson, d.clientID, chatID, seconds)
 }

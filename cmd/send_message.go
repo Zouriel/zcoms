@@ -7,13 +7,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Zouriel/zcoms/client"
 	"github.com/Zouriel/zcoms/internal/comms/telegram"
 
 	"github.com/spf13/cobra"
 )
 
 func init() {
-	var thread string
+	var (
+		thread            string
+		keep, pin, silent bool
+	)
 	sendMessageCommand := &cobra.Command{
 		Use:   "send <@username|contact|group|chat id> <message>",
 		Short: "Send a Telegram message to a user",
@@ -21,6 +25,10 @@ func init() {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			username := args[0]
 			message := strings.Join(args[1:], " ")
+
+			if keep || pin {
+				return sendKeep(username, message, thread, pin, silent)
+			}
 
 			// If the bridge daemon is running, route through it (it owns the
 			// session); otherwise talk to Telegram directly.
@@ -127,5 +135,26 @@ func init() {
 	}
 
 	sendMessageCommand.Flags().StringVar(&thread, "thread", "", "Post in this group thread (topic id or name)")
+	sendMessageCommand.Flags().BoolVar(&keep, "keep", false, "Never disappear, even in a chat with disappearing messages on")
+	sendMessageCommand.Flags().BoolVar(&pin, "pin", false, "Pin the message once sent (implies --keep)")
+	sendMessageCommand.Flags().BoolVar(&silent, "silent", false, "With --pin: pin without notifying the chat")
 	tgCmd.AddCommand(sendMessageCommand)
+}
+
+// sendKeep sends a message that never disappears, pinned when asked. It needs
+// the daemon, which pauses the chat's timer around the one send.
+func sendKeep(to, text, thread string, pin, silent bool) error {
+	c, ok := daemonClient()
+	if !ok {
+		return fmt.Errorf("--keep and --pin need the comms daemon running")
+	}
+	resp, err := c.SendKeep(to, text, client.KeepOptions{Thread: thread, Pin: pin, Silent: silent})
+	if resp.MessageID != 0 {
+		what := "Message sent, it will not disappear"
+		if pin && err == nil {
+			what = "Message sent and pinned 📌, it will not disappear"
+		}
+		fmt.Printf("%s (message_id=%d, chat_id=%d)\n", what, resp.MessageID, resp.ChatID)
+	}
+	return err
 }

@@ -241,3 +241,29 @@ func (c *Client) Unpin(to string, messageID int64) (Response, error) {
 func (c *Client) UnpinAll(to string) (Response, error) {
 	return c.Do(Request{Op: "unpin_all", To: to}, time.Now().Add(60*time.Second))
 }
+
+// KeepOptions are the extras of SendKeep.
+type KeepOptions struct {
+	Thread string // group thread (topic id or name)
+	Pin    bool   // pin the message once sent
+	Silent bool   // pin without the notification
+}
+
+// SendKeep sends a Telegram message that never disappears, even in a chat
+// with disappearing messages on, and pins it when asked. The response's
+// Disappear is the chat's timer, which is left as it was.
+func (c *Client) SendKeep(to, text string, o KeepOptions) (Response, error) {
+	return c.Do(Request{Op: "send_keep", To: to, Text: text, Thread: o.Thread, Pin: o.Pin, Silent: o.Silent}, time.Now().Add(sendDeadline))
+}
+
+// SetDisappear sets the disappearing-messages timer of Telegram chat to (0
+// turns it off). It applies to messages sent from now on, in every thread.
+func (c *Client) SetDisappear(to string, timer time.Duration) (Response, error) {
+	return c.Do(Request{Op: "disappear", To: to, Disappear: int32(timer / time.Second)}, time.Now().Add(60*time.Second))
+}
+
+// Disappear returns the disappearing-messages timer of Telegram chat to (0 = off).
+func (c *Client) Disappear(to string) (time.Duration, error) {
+	resp, err := c.Do(Request{Op: "disappear_get", To: to}, time.Now().Add(60*time.Second))
+	return time.Duration(resp.Disappear) * time.Second, err
+}

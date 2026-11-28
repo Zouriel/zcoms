@@ -122,3 +122,17 @@ func (c *Client) TopicList(transport, group string) ([]Topic, error) {
 	resp, err := c.Do(Request{Op: "topic_list", Transport: transport, To: group}, time.Now().Add(60*time.Second))
 	return resp.Topics, err
 }
+
+// GroupCreateOptions are the extras of GroupCreateWith.
+type GroupCreateOptions struct {
+	Topics    bool          // threads on from the start (Telegram forum)
+	Disappear time.Duration // disappearing-messages timer; 0 = off (Telegram)
+}
+
+// GroupCreateWith creates a group with these members and options. A Telegram
+// timer covers the whole group: its threads share it.
+func (c *Client) GroupCreateWith(transport, name string, members []string, o GroupCreateOptions) (*Group, error) {
+	req := Request{Op: "group_create", Transport: transport, Name: name, Members: members, Topics: o.Topics, Disappear: int32(o.Disappear / time.Second)}
+	resp, err := c.Do(req, time.Now().Add(90*time.Second))
+	return resp.Group, err
+}

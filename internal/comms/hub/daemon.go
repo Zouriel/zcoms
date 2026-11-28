@@ -39,6 +39,10 @@ type daemon struct {
 	registry map[string]transport.Transport
 	inbound  chan transport.Inbound
 
+	// keepMu serializes send_keep, which pauses a chat's disappearing timer
+	// around one send: overlapping calls would restore each other's pause.
+	keepMu sync.Mutex
+
 	mu         sync.Mutex
 	pendingAsk map[int64][]chan string // user id -> queued `zc tg ask` waiters
 	nameCache  map[int64]string        // user id -> display name

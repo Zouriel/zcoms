@@ -28,7 +28,7 @@ func DefaultSocketPath() (string, error) {
 
 // Request is one command sent to the daemon. Op selects which fields are used.
 type Request struct {
-	Op       string `json:"op"`                 // send|sendfile|read|ask|unread|mark_read|resolve|connectors|hello|contact_*|group_*|topic_create|topic_list|edit|pin|unpin|unpin_all|errand_*
+	Op       string `json:"op"`                 // send|sendfile|read|ask|unread|mark_read|resolve|connectors|hello|contact_*|group_*|topic_create|topic_list|edit|pin|unpin|unpin_all|send_keep|disappear|disappear_get|errand_*
 	To       string `json:"to,omitempty"`       // @username or numeric chat id / errand target / transport-native id
 	Text     string `json:"text,omitempty"`     // message body / question / caption
 	Path     string `json:"path,omitempty"`     // local file path (sendfile)
@@ -102,6 +102,12 @@ type Request struct {
 	MessageID int64 `json:"message_id,omitempty"`
 	Silent    bool  `json:"silent,omitempty"`
 	ForSelf   bool  `json:"for_self,omitempty"`
+
+	// Disappear is the disappearing-messages timer in seconds (0 = off) for
+	// disappear and group_create (Telegram; one timer per chat, threads share
+	// it). Pin on send_keep pins the sent message.
+	Disappear int32 `json:"disappear,omitempty"`
+	Pin       bool  `json:"pin,omitempty"`
 }
 
 // Group is one row of the comms.db group registry. NativeID is the Telegram
@@ -321,7 +327,8 @@ type Response struct {
 	Unread     []UnreadItem `json:"unread,omitempty"`
 	Contacts   []Contact    `json:"contacts,omitempty"`
 	Connectors []Connector  `json:"connectors,omitempty"`
-	Version    int          `json:"version,omitempty"` // daemon's ProtocolVersion (hello / mismatch reply)
+	Version    int          `json:"version,omitempty"`   // daemon's ProtocolVersion (hello / mismatch reply)
+	Disappear  int32        `json:"disappear,omitempty"` // a chat's disappearing-messages timer, seconds (disappear, disappear_get)
 	Error      string       `json:"error,omitempty"`
 
 	// Group ops.

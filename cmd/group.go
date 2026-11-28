@@ -32,7 +32,10 @@ func groupCmd(transportName, label string) *cobra.Command {
 		return c, nil
 	}
 
-	var topics bool
+	var (
+		topics    bool
+		disappear string
+	)
 	create := &cobra.Command{
 		Use:   "create <name> <member>...",
 		Short: "Create a group with these members (the owner is always added)",
@@ -42,14 +45,18 @@ func groupCmd(transportName, label string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var g *client.Group
-			if topics {
-				g, err = c.GroupCreateTopics(transportName, args[0], args[1:])
-			} else {
-				g, err = c.GroupCreate(transportName, args[0], args[1:])
+			o := client.GroupCreateOptions{Topics: topics}
+			if disappear != "" {
+				if o.Disappear, err = parseDisappear(disappear); err != nil {
+					return err
+				}
 			}
+			g, err := c.GroupCreateWith(transportName, args[0], args[1:], o)
 			if g != nil {
 				fmt.Printf("Created %q (%s)\n", g.Name, g.NativeID)
+				if o.Disappear > 0 && err == nil {
+					fmt.Printf("Messages disappear after %s (every thread). Use `zc tg send --pin` for a pinned message that stays.\n", formatDisappear(o.Disappear))
+				}
 			}
 			return err
 		},
@@ -237,6 +244,10 @@ func groupCmd(transportName, label string) *cobra.Command {
 	}
 
 	root.AddCommand(create, add, list, members, view, topic, topicsCmd, renameCmd)
+	if transportName == "telegram" {
+		create.Flags().StringVar(&disappear, "disappear", "", "Turn on disappearing messages for the whole group: 1d, 7d, 2w, ... (threads share it)")
+		root.AddCommand(disappearCmd(daemon))
+	}
 	return root
 }
 
@@ -305,4 +316,47 @@ func followGroup(c *client.Client, transportName, group string, seen map[string]
 
 func init() {
 	tgCmd.AddCommand(groupCmd("telegram", "Telegram"))
+}
+
+// disappearCmd builds `zc tg group disappear`: show or set a group's
+// disappearing-messages timer. Telegram has one per chat, so it covers every
+// thread; pinned messages sent with `zc tg send --pin` stay.
+func disappearCmd(daemon func() (*client.Client, error)) *cobra.Command {
+	return &cobra.Command{
+		Use:   "disappear <group> [1d|7d|2w|...|off]",
+		Short: "Show or set disappearing messages for a group (all its threads)",
+		Long: "Show or set the group's disappearing-messages timer. Telegram keeps one\n" +
+			"timer per chat, so every thread shares it, and it only applies to\n" +
+			"messages sent from then on. A message pinned with `zc tg send --pin`\n" +
+			"is sent outside the timer and stays.",
+		Args:         cobra.RangeArgs(1, 2),
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := daemon()
+			if err != nil {
+				return err
+			}
+			if len(args) == 1 {
+				d, err := c.Disappear(args[0])
+				if err != nil {
+					return err
+				}
+				fmt.Printf("Disappearing messages in %s: %s\n", args[0], formatDisappear(d))
+				return nil
+			}
+			d, err := parseDisappear(args[1])
+			if err != nil {
+				return err
+			}
+			if _, err := c.SetDisappear(args[0], d); err != nil {
+				return err
+			}
+			if d == 0 {
+				fmt.Printf("Disappearing messages off in %s\n", args[0])
+				return nil
+			}
+			fmt.Printf("Messages in %s now disappear after %s (every thread)\n", args[0], formatDisappear(d))
+			return nil
+		},
+	}
 }

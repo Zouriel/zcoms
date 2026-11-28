@@ -331,7 +331,7 @@ func (d *daemon) handleIPC(conn net.Conn) {
 		d.handleGroupOp(conn, req)
 
 	// --- edit and pin sent messages (Telegram) -------------------------------
-	case "edit", "pin", "unpin", "unpin_all":
+	case "edit", "pin", "unpin", "unpin_all", "send_keep", "disappear", "disappear_get":
 		d.handleMessageOp(conn, req)
 
 	// --- contacts directory (comms.db) ---------------------------------------
