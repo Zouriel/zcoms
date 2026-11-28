@@ -117,7 +117,7 @@ func (d *daemon) sendKeep(req client.Request, chatID int64) (client.Response, er
 
 	thread, _ := d.sendThread("telegram", req.Thread)
 	addr := transport.Address{Transport: "telegram", ID: strconv.FormatInt(chatID, 10)}
-	ref, err := rs.SendWith(addr, req.Text, transport.SendOptions{Thread: thread})
+	ref, err := rs.SendWith(addr, req.Text, transport.SendOptions{Thread: thread, ReplyTo: req.ReplyTo})
 	restore()
 	if err != nil {
 		return resp, err

@@ -244,16 +244,17 @@ func (c *Client) UnpinAll(to string) (Response, error) {
 
 // KeepOptions are the extras of SendKeep.
 type KeepOptions struct {
-	Thread string // group thread (topic id or name)
-	Pin    bool   // pin the message once sent
-	Silent bool   // pin without the notification
+	Thread  string // group thread (topic id or name)
+	ReplyTo string // message id to quote
+	Pin     bool   // pin the message once sent
+	Silent  bool   // pin without the notification
 }
 
 // SendKeep sends a Telegram message that never disappears, even in a chat
 // with disappearing messages on, and pins it when asked. The response's
 // Disappear is the chat's timer, which is left as it was.
 func (c *Client) SendKeep(to, text string, o KeepOptions) (Response, error) {
-	return c.Do(Request{Op: "send_keep", To: to, Text: text, Thread: o.Thread, Pin: o.Pin, Silent: o.Silent}, time.Now().Add(sendDeadline))
+	return c.Do(Request{Op: "send_keep", To: to, Text: text, Thread: o.Thread, ReplyTo: o.ReplyTo, Pin: o.Pin, Silent: o.Silent}, time.Now().Add(sendDeadline))
 }
 
 // SetDisappear sets the disappearing-messages timer of Telegram chat to (0

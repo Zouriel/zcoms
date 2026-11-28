@@ -255,9 +255,12 @@ func runProjectInit(args []string) error {
 func projectSayLine(path string, args []string) (string, error) {
 	var thread string
 	var files, words []string
+	pin := false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
+		case a == "--pin":
+			pin = true
 		case a == "--thread" || a == "--file":
 			if i+1 >= len(args) {
 				return "", fmt.Errorf("%s needs a value", a)
@@ -280,7 +283,13 @@ func projectSayLine(path string, args []string) (string, error) {
 	if text == "" && len(files) == 0 {
 		return "", fmt.Errorf("say what? zc project say [--thread <name>] [--file <path>]... <text>")
 	}
+	if pin && len(files) > 0 {
+		return "", fmt.Errorf("--pin pins a text update; send files separately")
+	}
 	line := "project say --path " + shellQuote(path)
+	if pin {
+		line += " --pin=true" // key=value: an agent that predates --pin parses it harmlessly
+	}
 	if thread != "" {
 		line += " --thread " + shellQuote(thread)
 	}
@@ -315,7 +324,7 @@ func init() {
 			"  zc project members | alias add|rm <member> <alias>\n" +
 			"  zc project tasks [done|drop <id> | assign <id> <member>]\n" +
 			"  zc project follow on|off | standup now\n" +
-			"  zc project say [--thread <name|id>] [--file <path>]... <text>\n" +
+			"  zc project say [--thread <name|id>] [--file <path>]... [--pin] <text>\n" +
 			"      post an update (and files, photos as photos, 20 MB each) to the\n" +
 			"      project's group; --thread posts in that thread, creating it if needed",
 		DisableFlagParsing: true,

@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -71,5 +72,18 @@ func TestProjectSayLine(t *testing.T) {
 	}
 	if _, err := projectSayLine("/repo", []string{"--thread"}); err == nil {
 		t.Fatal("--thread without a value must fail")
+	}
+}
+
+func TestProjectSayLinePin(t *testing.T) {
+	line, err := projectSayLine("/p", []string{"--pin", "--thread", "Misc", "status: green"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(line, " --pin=true") || !strings.Contains(line, "status: green") {
+		t.Fatalf("line = %q", line)
+	}
+	if _, err := projectSayLine("/p", []string{"--pin", "--file", "/etc/hostname", "x"}); err == nil {
+		t.Fatal("--pin with --file: want an error")
 	}
 }
