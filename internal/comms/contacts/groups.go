@@ -13,6 +13,9 @@ import (
 // The group registry lives in comms.db beside the contacts. A row is created
 // when a group is created or listed; listen and follow default off and only
 // the owner turns them on (the hub refuses group_set from the agent).
+// thread_timers holds the per-thread disappearing timers the daemon enforces
+// itself (Telegram has one timer per chat only); since_id is the newest
+// message already swept, so only messages after it are ever deleted.
 // group_calls records which messages were forwarded to the agent as calls, so
 // an agent-caller read can be limited to a window around a recent call.
 
@@ -36,6 +39,15 @@ CREATE TABLE IF NOT EXISTS group_calls (
   msg_id    TEXT NOT NULL,
   at        INTEGER NOT NULL,
   PRIMARY KEY(transport, native_id, msg_id)
+);
+CREATE TABLE IF NOT EXISTS thread_timers (
+  transport TEXT NOT NULL,
+  native_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  seconds   INTEGER NOT NULL,
+  since_id  INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT,
+  PRIMARY KEY(transport, native_id, thread_id)
 );`)
 	return err
 }

@@ -268,3 +268,25 @@ func (c *Client) Disappear(to string) (time.Duration, error) {
 	resp, err := c.Do(Request{Op: "disappear_get", To: to}, time.Now().Add(60*time.Second))
 	return time.Duration(resp.Disappear) * time.Second, err
 }
+
+// Delete deletes Telegram messages in chat to for everyone. No ids deletes
+// the newest message this account sent there. Someone else's message needs
+// the delete right in that group.
+func (c *Client) Delete(to string, messageIDs ...int64) (Response, error) {
+	return c.Do(Request{Op: "delete", To: to, MessageIDs: messageIDs}, time.Now().Add(60*time.Second))
+}
+
+// SetThreadDisappear sets (0 clears) one thread's disappearing timer in
+// Telegram group to. Telegram has no per-thread timer, so the daemon deletes
+// the thread's messages itself once they are older than timer, never pinned
+// ones, and only those sent after this call.
+func (c *Client) SetThreadDisappear(to, thread string, timer time.Duration) (Response, error) {
+	return c.Do(Request{Op: "disappear", To: to, Thread: thread, Disappear: int32(timer / time.Second)}, time.Now().Add(60*time.Second))
+}
+
+// ThreadTimers returns Telegram group to's whole-group timer and its
+// per-thread timers.
+func (c *Client) ThreadTimers(to string) (time.Duration, []ThreadTimer, error) {
+	resp, err := c.Do(Request{Op: "disappear_get", To: to}, time.Now().Add(60*time.Second))
+	return time.Duration(resp.Disappear) * time.Second, resp.Timers, err
+}

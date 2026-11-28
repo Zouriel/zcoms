@@ -39,3 +39,11 @@ func TestNewestOutgoing(t *testing.T) {
 		t.Fatalf("err = %v; want ErrNoOutgoing", err)
 	}
 }
+
+func TestDeleteMessagesRequest(t *testing.T) {
+	r := DeleteMessagesRequest(-100, []int64{1, 2}, true)
+	ids, _ := r["message_ids"].([]int64)
+	if r["@type"] != "deleteMessages" || len(ids) != 2 || r["revoke"] != true {
+		t.Fatalf("request = %v", r)
+	}
+}

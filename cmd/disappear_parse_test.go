@@ -26,6 +26,12 @@ func TestParseDisappear(t *testing.T) {
 	if s := formatDisappear(14 * day); s != "2w" {
 		t.Errorf("formatDisappear(14d) = %q", s)
 	}
+	if s := formatDisappear(time.Minute); s != "1m" {
+		t.Errorf("formatDisappear(1m) = %q", s)
+	}
+	if s := formatDisappear(2 * time.Hour); s != "2h" {
+		t.Errorf("formatDisappear(2h) = %q", s)
+	}
 	if s := formatDisappear(3 * day); s != "3d" {
 		t.Errorf("formatDisappear(3d) = %q", s)
 	}

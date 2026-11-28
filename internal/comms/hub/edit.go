@@ -39,14 +39,33 @@ func (d *daemon) messageOp(req client.Request) (client.Response, error) {
 	case "unpin_all":
 		return resp, telegram.UnpinAllMessages(d.tdjson, d.clientID, chatID)
 	case "disappear_get":
-		resp.Disappear, err = telegram.AutoDelete(d.tdjson, d.clientID, chatID)
+		if resp.Disappear, err = telegram.AutoDelete(d.tdjson, d.clientID, chatID); err != nil {
+			return resp, err
+		}
+		resp.Timers, err = d.threadTimers(chatID)
 		return resp, err
 	case "disappear":
 		if req.Disappear < 0 {
 			return resp, errors.New("the timer cannot be negative")
 		}
+		// Telegram's timer covers the whole chat; a thread gets its own,
+		// enforced by the daemon's sweeper.
+		if req.Thread != "" {
+			return d.setThreadTimer(chatID, req.Thread, req.Disappear)
+		}
 		resp.Disappear = req.Disappear
 		return resp, telegram.SetAutoDelete(d.tdjson, d.clientID, chatID, req.Disappear)
+	case "delete":
+		ids := req.MessageIDs
+		if len(ids) == 0 {
+			id, err := telegram.LastOutgoingID(d.tdjson, d.clientID, chatID)
+			if err != nil {
+				return resp, err
+			}
+			ids = []int64{id}
+		}
+		resp.MessageID = ids[0]
+		return resp, telegram.DeleteMessages(d.tdjson, d.clientID, chatID, ids)
 	case "send_keep":
 		return d.sendKeep(req, chatID)
 	}

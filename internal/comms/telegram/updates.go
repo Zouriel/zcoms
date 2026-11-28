@@ -84,6 +84,7 @@ type Message struct {
 	SenderID   SenderID `json:"sender_id"`
 	Content    Content  `json:"content"`
 	ReplyTo    *ReplyTo `json:"reply_to,omitempty"`
+	IsPinned   bool     `json:"is_pinned,omitempty"`
 
 	// AutoDeleteTime is the disappearing timer the message was sent with,
 	// AutoDeleteIn the seconds left (both 0 for a message that stays).

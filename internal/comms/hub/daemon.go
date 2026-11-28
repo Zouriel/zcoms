@@ -122,6 +122,9 @@ func RunDaemon(tdjson *telegram.TDJSON, clientID int32, store *contacts.Store) e
 	// One consumer turns the fan-in channel into broadcast events for everyone.
 	go d.consumeInbound()
 
+	// Thread disappearing timers, which Telegram has no setting for.
+	go d.sweepThreadTimers(ctx)
+
 	// Start every registered transport's receive loop. Telegram's loop blocks
 	// the session, so it owns the foreground; others (if any) run in goroutines.
 	for _, name := range d.transportNames() {

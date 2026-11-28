@@ -28,7 +28,7 @@ func DefaultSocketPath() (string, error) {
 
 // Request is one command sent to the daemon. Op selects which fields are used.
 type Request struct {
-	Op       string `json:"op"`                 // send|sendfile|read|ask|unread|mark_read|resolve|connectors|hello|contact_*|group_*|topic_create|topic_list|edit|pin|unpin|unpin_all|send_keep|disappear|disappear_get|errand_*
+	Op       string `json:"op"`                 // send|sendfile|read|ask|unread|mark_read|resolve|connectors|hello|contact_*|group_*|topic_create|topic_list|edit|pin|unpin|unpin_all|send_keep|delete|disappear|disappear_get|errand_*
 	To       string `json:"to,omitempty"`       // @username or numeric chat id / errand target / transport-native id
 	Text     string `json:"text,omitempty"`     // message body / question / caption
 	Path     string `json:"path,omitempty"`     // local file path (sendfile)
@@ -320,20 +320,21 @@ type Connector struct {
 
 // Response is the daemon's reply to a Request.
 type Response struct {
-	OK         bool         `json:"ok"`
-	MessageID  int64        `json:"message_id,omitempty"`
-	MsgRef     string       `json:"msg_ref,omitempty"` // transport-native id of a sent message (any transport; quote it with reply_to)
-	ChatID     int64        `json:"chat_id,omitempty"`
-	Address    string       `json:"address,omitempty"` // transport-native id of the sent/resolved message
-	Reply      string       `json:"reply,omitempty"`
-	Label      string       `json:"label,omitempty"`
-	Messages   []Message    `json:"messages,omitempty"`
-	Unread     []UnreadItem `json:"unread,omitempty"`
-	Contacts   []Contact    `json:"contacts,omitempty"`
-	Connectors []Connector  `json:"connectors,omitempty"`
-	Version    int          `json:"version,omitempty"`   // daemon's ProtocolVersion (hello / mismatch reply)
-	Disappear  int32        `json:"disappear,omitempty"` // a chat's disappearing-messages timer, seconds (disappear, disappear_get)
-	Error      string       `json:"error,omitempty"`
+	OK         bool          `json:"ok"`
+	MessageID  int64         `json:"message_id,omitempty"`
+	MsgRef     string        `json:"msg_ref,omitempty"` // transport-native id of a sent message (any transport; quote it with reply_to)
+	ChatID     int64         `json:"chat_id,omitempty"`
+	Address    string        `json:"address,omitempty"` // transport-native id of the sent/resolved message
+	Reply      string        `json:"reply,omitempty"`
+	Label      string        `json:"label,omitempty"`
+	Messages   []Message     `json:"messages,omitempty"`
+	Unread     []UnreadItem  `json:"unread,omitempty"`
+	Contacts   []Contact     `json:"contacts,omitempty"`
+	Connectors []Connector   `json:"connectors,omitempty"`
+	Version    int           `json:"version,omitempty"`   // daemon's ProtocolVersion (hello / mismatch reply)
+	Disappear  int32         `json:"disappear,omitempty"` // a chat's (or thread's) disappearing-messages timer, seconds (disappear, disappear_get)
+	Timers     []ThreadTimer `json:"timers,omitempty"`    // a group's per-thread timers (disappear_get)
+	Error      string        `json:"error,omitempty"`
 
 	// Group ops.
 	Group         *Group         `json:"group,omitempty"`
@@ -348,4 +349,14 @@ type Response struct {
 	// ThreadIgnored says a send asked for a thread on a transport whose
 	// groups have none, so it went to the chat itself.
 	ThreadIgnored bool `json:"thread_ignored,omitempty"`
+}
+
+// ThreadTimer is one thread's disappearing timer. Telegram keeps one timer per
+// chat, so the daemon enforces these itself: it deletes the thread's messages
+// once they are older than Seconds, never pinned ones, and only messages sent
+// after the timer was set.
+type ThreadTimer struct {
+	ThreadID string `json:"thread_id"`
+	Name     string `json:"name,omitempty"`
+	Seconds  int32  `json:"seconds"`
 }

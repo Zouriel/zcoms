@@ -319,16 +319,20 @@ func init() {
 }
 
 // disappearCmd builds `zc tg group disappear`: show or set a group's
-// disappearing-messages timer. Telegram has one per chat, so it covers every
-// thread; pinned messages sent with `zc tg send --pin` stay.
+// disappearing-messages timer, or one thread's with --thread. Telegram keeps
+// one timer per chat; a thread timer is enforced by the daemon, which deletes
+// the thread's expired messages itself (never pinned ones).
 func disappearCmd(daemon func() (*client.Client, error)) *cobra.Command {
-	return &cobra.Command{
-		Use:   "disappear <group> [1d|7d|2w|...|off]",
-		Short: "Show or set disappearing messages for a group (all its threads)",
-		Long: "Show or set the group's disappearing-messages timer. Telegram keeps one\n" +
-			"timer per chat, so every thread shares it, and it only applies to\n" +
-			"messages sent from then on. A message pinned with `zc tg send --pin`\n" +
-			"is sent outside the timer and stays.",
+	var thread string
+	cmd := &cobra.Command{
+		Use:   "disappear <group> [1d|7d|2w|...|off] [--thread <name|id>]",
+		Short: "Show or set disappearing messages for a group or one thread",
+		Long: "Without --thread, set Telegram's own timer for the whole group (every\n" +
+			"thread shares it). With --thread, only that thread's messages disappear:\n" +
+			"Telegram has no per-thread timer, so the comms daemon deletes them once\n" +
+			"they are older than the timer (checked every minute; it needs the delete\n" +
+			"right for other people's messages). Either way only messages sent from then\n" +
+			"on are affected, and pinned messages stay (`zc tg send --pin`).",
 		Args:         cobra.RangeArgs(1, 2),
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -336,27 +340,48 @@ func disappearCmd(daemon func() (*client.Client, error)) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			group := args[0]
 			if len(args) == 1 {
-				d, err := c.Disappear(args[0])
+				whole, timers, err := c.ThreadTimers(group)
 				if err != nil {
 					return err
 				}
-				fmt.Printf("Disappearing messages in %s: %s\n", args[0], formatDisappear(d))
+				fmt.Printf("Disappearing messages in %s: %s\n", group, formatDisappear(whole))
+				for _, t := range timers {
+					name := t.Name
+					if name == "" {
+						name = "thread " + t.ThreadID
+					}
+					fmt.Printf("  thread %q: %s\n", name, formatDisappear(time.Duration(t.Seconds)*time.Second))
+				}
 				return nil
 			}
 			d, err := parseDisappear(args[1])
 			if err != nil {
 				return err
 			}
-			if _, err := c.SetDisappear(args[0], d); err != nil {
+			if thread != "" {
+				if _, err := c.SetThreadDisappear(group, thread, d); err != nil {
+					return err
+				}
+				if d == 0 {
+					fmt.Printf("Disappearing messages off in thread %q of %s\n", thread, group)
+					return nil
+				}
+				fmt.Printf("Messages in thread %q of %s now disappear after %s (only that thread; pinned ones stay)\n", thread, group, formatDisappear(d))
+				return nil
+			}
+			if _, err := c.SetDisappear(group, d); err != nil {
 				return err
 			}
 			if d == 0 {
-				fmt.Printf("Disappearing messages off in %s\n", args[0])
+				fmt.Printf("Disappearing messages off in %s\n", group)
 				return nil
 			}
-			fmt.Printf("Messages in %s now disappear after %s (every thread)\n", args[0], formatDisappear(d))
+			fmt.Printf("Messages in %s now disappear after %s (every thread)\n", group, formatDisappear(d))
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&thread, "thread", "", "Only this thread (topic name or id)")
+	return cmd
 }

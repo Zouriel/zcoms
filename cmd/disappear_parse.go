@@ -41,6 +41,10 @@ func formatDisappear(d time.Duration) string {
 		return fmt.Sprintf("%dw", d/(7*day))
 	case d%day == 0:
 		return fmt.Sprintf("%dd", d/day)
+	case d%time.Hour == 0:
+		return fmt.Sprintf("%dh", d/time.Hour)
+	case d%time.Minute == 0:
+		return fmt.Sprintf("%dm", d/time.Minute)
 	}
 	return d.String()
 }
