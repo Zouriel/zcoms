@@ -28,7 +28,7 @@ func DefaultSocketPath() (string, error) {
 
 // Request is one command sent to the daemon. Op selects which fields are used.
 type Request struct {
-	Op       string `json:"op"`                 // send|sendfile|read|ask|unread|mark_read|resolve|connectors|hello|contact_*|group_*|topic_create|topic_list|errand_*
+	Op       string `json:"op"`                 // send|sendfile|read|ask|unread|mark_read|resolve|connectors|hello|contact_*|group_*|topic_create|topic_list|edit|pin|unpin|unpin_all|errand_*
 	To       string `json:"to,omitempty"`       // @username or numeric chat id / errand target / transport-native id
 	Text     string `json:"text,omitempty"`     // message body / question / caption
 	Path     string `json:"path,omitempty"`     // local file path (sendfile)
@@ -95,6 +95,13 @@ type Request struct {
 	// group_set flags; nil leaves the flag unchanged.
 	Listen *bool `json:"listen,omitempty"`
 	Follow *bool `json:"follow,omitempty"`
+
+	// edit/pin/unpin (Telegram): the message to act on in chat To. Zero means
+	// the newest message this account sent there. Silent pins without the
+	// notification; ForSelf pins only on this side (private chats).
+	MessageID int64 `json:"message_id,omitempty"`
+	Silent    bool  `json:"silent,omitempty"`
+	ForSelf   bool  `json:"for_self,omitempty"`
 }
 
 // Group is one row of the comms.db group registry. NativeID is the Telegram

@@ -330,6 +330,10 @@ func (d *daemon) handleIPC(conn net.Conn) {
 		"topic_create", "topic_list", "topic_rename":
 		d.handleGroupOp(conn, req)
 
+	// --- edit and pin sent messages (Telegram) -------------------------------
+	case "edit", "pin", "unpin", "unpin_all":
+		d.handleMessageOp(conn, req)
+
 	// --- contacts directory (comms.db) ---------------------------------------
 	case "contact_resolve", "contact_list", "contact_create", "contact_update",
 		"contact_delete", "contact_upsert", "contact_handle_add", "contact_handle_remove":

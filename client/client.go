@@ -211,3 +211,33 @@ func (c *Client) Resolve(to string) (int64, error) {
 	resp, err := c.Do(Request{Op: "resolve", To: to}, time.Now().Add(30*time.Second))
 	return resp.ChatID, err
 }
+
+// Edit replaces the text of a Telegram message this account sent in chat to.
+// A zero messageID edits the newest message this account sent there. The
+// response carries the chat and message ids acted on.
+func (c *Client) Edit(to string, messageID int64, text string) (Response, error) {
+	return c.Do(Request{Op: "edit", To: to, MessageID: messageID, Text: text}, time.Now().Add(60*time.Second))
+}
+
+// PinOptions are the extras of a pin.
+type PinOptions struct {
+	Silent  bool // no "pinned a message" notification
+	ForSelf bool // pin only on this side (private chats only)
+}
+
+// Pin pins a Telegram message in chat to. A zero messageID pins the newest
+// message this account sent there.
+func (c *Client) Pin(to string, messageID int64, o PinOptions) (Response, error) {
+	return c.Do(Request{Op: "pin", To: to, MessageID: messageID, Silent: o.Silent, ForSelf: o.ForSelf}, time.Now().Add(60*time.Second))
+}
+
+// Unpin unpins one Telegram message in chat to. A zero messageID unpins the
+// newest message this account sent there.
+func (c *Client) Unpin(to string, messageID int64) (Response, error) {
+	return c.Do(Request{Op: "unpin", To: to, MessageID: messageID}, time.Now().Add(60*time.Second))
+}
+
+// UnpinAll unpins every pinned message in Telegram chat to.
+func (c *Client) UnpinAll(to string) (Response, error) {
+	return c.Do(Request{Op: "unpin_all", To: to}, time.Now().Add(60*time.Second))
+}
