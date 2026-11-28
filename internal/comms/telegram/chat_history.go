@@ -38,6 +38,7 @@ func FetchChatHistorySnapshot(tdjson *TDJSON, clientID int32, chatID int64, limi
 	}
 	collected := make([]Message, 0, limit)
 	var from int64 // 0 = newest
+	pages := 0
 	for len(collected) < limit {
 		batch := limit - len(collected)
 		if batch > 50 {
@@ -50,14 +51,24 @@ func FetchChatHistorySnapshot(tdjson *TDJSON, clientID int32, chatID int64, limi
 		if len(msgs) == 0 {
 			break
 		}
+		if msgs[len(msgs)-1].ID == from {
+			break // no progress: start of the chat
+		}
 		collected = append(collected, msgs...)
 		from = msgs[len(msgs)-1].ID // oldest in this page -> next page is older
-		if len(msgs) < batch {
+		// A short page is not the end: TDLib often answers the first page
+		// with only what it has cached (a single message after a restart).
+		// Only an empty page means the start of the chat.
+		if pages++; pages >= maxSnapshotPages {
 			break
 		}
 	}
 	return collected, nil
 }
+
+// maxSnapshotPages bounds the pages one snapshot fetches, since short pages
+// no longer end the loop.
+const maxSnapshotPages = 40
 
 func FetchChatHistory(tdjson *TDJSON, clientID int32, chatID int64, limit int) ([]Message, error) {
 	if err := OpenChat(tdjson, clientID, chatID); err != nil {

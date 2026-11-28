@@ -21,6 +21,8 @@ type chatMessage struct {
 	Kind      string `json:"kind"`           // "text" or a media label
 	Text      string `json:"text"`           // text or caption
 	FilePath  string `json:"file,omitempty"` // local path if media was downloaded
+
+	DisappearIn int64 `json:"disappear_in,omitempty"` // seconds left before it disappears
 }
 
 func init() {
@@ -62,6 +64,8 @@ func init() {
 								Kind:      m.Kind,
 								Text:      m.Text,
 								FilePath:  m.File,
+
+								DisappearIn: m.DisappearIn,
 							}, jsonOutput)
 						}
 						return nil

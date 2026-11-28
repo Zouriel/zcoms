@@ -85,6 +85,11 @@ type Message struct {
 	Content    Content  `json:"content"`
 	ReplyTo    *ReplyTo `json:"reply_to,omitempty"`
 
+	// AutoDeleteTime is the disappearing timer the message was sent with,
+	// AutoDeleteIn the seconds left (both 0 for a message that stays).
+	AutoDeleteTime int32   `json:"auto_delete_time,omitempty"`
+	AutoDeleteIn   float64 `json:"auto_delete_in,omitempty"`
+
 	// TopicID is the forum topic the message was posted in (TDLib 1.8.64);
 	// IsTopicMessage and MessageThreadID are the older builds' spelling.
 	TopicID         *MessageTopic `json:"topic_id,omitempty"`

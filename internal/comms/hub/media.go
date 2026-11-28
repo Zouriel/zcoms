@@ -76,6 +76,8 @@ func (d *daemon) buildMessage(m telegram.Message, titleCache map[int64]string, d
 		Kind:      kind,
 		Text:      m.Content.CaptionOrText(),
 		File:      file,
+
+		DisappearIn: int64(m.AutoDeleteIn),
 	}
 }
 

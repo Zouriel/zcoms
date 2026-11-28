@@ -165,6 +165,10 @@ type Message struct {
 	Kind      string `json:"kind"`
 	Text      string `json:"text"`
 	File      string `json:"file,omitempty"`
+
+	// DisappearIn is how many seconds are left before the message
+	// disappears; 0 for a message that stays (Telegram).
+	DisappearIn int64 `json:"disappear_in,omitempty"`
 }
 
 // UnreadItem is one unread 1:1 message from a non-allow-listed sender, returned
